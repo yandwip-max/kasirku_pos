@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Banknote, CheckCircle2, QrCode } from "lucide-react";
 import type { CartLine } from "@/lib/types";
+import { cartTotal } from "@/lib/cart";
 import { formatRupiah, formatThousands, parseRupiah } from "@/lib/format";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -57,7 +58,7 @@ export default function CheckoutDialog({ open, onOpenChange, cart, customer, sub
   const [cash, setCash] = useState(0);
   const [qrisPaid, setQrisPaid] = useState(false);
 
-  const total = useMemo(() => cart.reduce((sum, line) => sum + line.product.sell_price * line.qty, 0), [cart]);
+  const total = useMemo(() => cartTotal(cart), [cart]);
 
   useEffect(() => {
     if (open) {

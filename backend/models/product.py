@@ -65,6 +65,8 @@ class ProductUnit(BaseModel):
     imei: str
     color: str = ""
     capacity: str = ""
+    cost_price: int = 0  # per-unit purchase price; 0 = fall back to the product price
+    sell_price: int = 0  # per-unit selling price; 0 = fall back to the product price
     status: Literal["in_stock", "sold"] = "in_stock"
     created_at: datetime = Field(default_factory=_now)
     sold_at: Optional[datetime] = None
@@ -75,3 +77,5 @@ class ProductUnitCreate(BaseModel):
     imei: str
     color: str = ""
     capacity: str = ""
+    cost_price: int = 0
+    sell_price: int = 0

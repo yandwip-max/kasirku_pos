@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import type { CartLine } from "@/lib/types";
+import { linePrice } from "@/lib/cart";
 import { formatRupiah } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ const lineKey = (line: CartLine) => line.unit?.id ?? `acc-${line.product.id}`;
 export default function CartPanel({ cart, onRemove, onQtyChange, onClear, onCheckout }: CartPanelProps) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const total = cart.reduce((sum, line) => sum + line.product.sell_price * line.qty, 0);
+  const total = cart.reduce((sum, line) => sum + linePrice(line) * line.qty, 0);
 
   return (
     <div data-testid="pos-cart-panel" className="flex h-full flex-col">
@@ -101,7 +102,7 @@ export default function CartPanel({ cart, onRemove, onQtyChange, onClear, onChec
                   </div>
                 )}
                 <span className="font-mono text-sm font-bold">
-                  {formatRupiah(line.product.sell_price * line.qty)}
+                  {formatRupiah(linePrice(line) * line.qty)}
                 </span>
               </div>
             </div>

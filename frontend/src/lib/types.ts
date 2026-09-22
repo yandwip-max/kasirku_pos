@@ -26,6 +26,9 @@ export interface ProductUnit {
   imei: string;
   color: string;
   capacity: string;
+  /** per-unit prices; 0 = fall back to the product-level price */
+  cost_price: number;
+  sell_price: number;
   status: "in_stock" | "sold";
   created_at: string;
   sold_at: string | null;
@@ -109,6 +112,8 @@ export interface UnitPayload {
   imei: string;
   color: string;
   capacity: string;
+  cost_price: number;
+  sell_price: number;
 }
 
 export interface CheckoutPayload {

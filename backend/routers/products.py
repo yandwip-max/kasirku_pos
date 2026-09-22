@@ -116,7 +116,12 @@ async def add_unit(product_id: str, input: ProductUnitCreate):
     if await db.product_units.find_one({"imei": imei}):
         raise HTTPException(status_code=409, detail=f"IMEI {imei} sudah terdaftar")
     unit = ProductUnit(
-        product_id=product_id, imei=imei, color=input.color.strip(), capacity=input.capacity.strip()
+        product_id=product_id,
+        imei=imei,
+        color=input.color.strip(),
+        capacity=input.capacity.strip(),
+        cost_price=input.cost_price,
+        sell_price=input.sell_price,
     )
     await db.product_units.insert_one(unit.model_dump())
     return unit

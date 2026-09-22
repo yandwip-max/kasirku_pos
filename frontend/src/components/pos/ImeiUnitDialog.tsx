@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, Smartphone } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import type { Product, ProductUnit } from "@/lib/types";
+import { formatRupiah } from "@/lib/format";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -79,11 +80,16 @@ export default function ImeiUnitDialog({ product, takenUnitIds, onClose, onPick 
                     {unit.color || "Warna -"} · {unit.capacity || "Kapasitas -"}
                   </p>
                 </div>
-                {taken ? (
-                  <span className="text-xs text-slate-400">di keranjang</span>
-                ) : selectedId === unit.id ? (
-                  <Check className="h-4 w-4 text-[#0284C7]" />
-                ) : null}
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="font-mono text-sm font-bold">
+                    {formatRupiah(unit.sell_price > 0 ? unit.sell_price : (product?.sell_price ?? 0))}
+                  </span>
+                  {taken ? (
+                    <span className="text-xs text-slate-400">di keranjang</span>
+                  ) : selectedId === unit.id ? (
+                    <Check className="h-4 w-4 text-[#0284C7]" />
+                  ) : null}
+                </div>
               </button>
             );
           })}

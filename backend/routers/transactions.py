@@ -105,6 +105,8 @@ async def create_transaction(input: CheckoutIn):
                 if claimed.matched_count == 0:
                     raise HTTPException(status_code=409, detail=f"IMEI {unit['imei']} sudah terjual")
                 claimed_units.append(unit["id"])
+                # a unit may carry its own IMEI-specific selling price; fall back to the product price
+                unit_price = int(unit.get("sell_price") or 0) or product["sell_price"]
                 out_items.append(
                     TransactionItemOut(
                         product_id=product["id"],
@@ -114,8 +116,8 @@ async def create_transaction(input: CheckoutIn):
                         color=unit.get("color", ""),
                         capacity=unit.get("capacity", ""),
                         qty=1,
-                        price=product["sell_price"],
-                        subtotal=product["sell_price"],
+                        price=unit_price,
+                        subtotal=unit_price,
                     )
                 )
             else:

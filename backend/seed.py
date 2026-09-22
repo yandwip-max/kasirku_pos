@@ -128,6 +128,8 @@ async def seed() -> None:
                         "imei": str(imei_counter),
                         "color": color,
                         "capacity": capacity,
+                        "cost_price": p["cost_price"],
+                        "sell_price": p["sell_price"],
                         "status": "in_stock",
                         "created_at": NOW - timedelta(days=3),
                         "sold_at": None,

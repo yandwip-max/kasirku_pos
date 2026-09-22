@@ -280,6 +280,8 @@ function UnitManagerDialog({
   const [imei, setImei] = useState("");
   const [color, setColor] = useState("");
   const [capacity, setCapacity] = useState("");
+  const [cost, setCost] = useState(product?.cost_price ? String(product.cost_price) : "");
+  const [sell, setSell] = useState(product?.sell_price ? String(product.sell_price) : "");
   const queryClient = useQueryClient();
 
   const unitsQuery = useQuery({
@@ -295,6 +297,8 @@ function UnitManagerDialog({
         imei: imei.trim(),
         color: color.trim(),
         capacity: capacity.trim(),
+        cost_price: Number(cost) || 0,
+        sell_price: Number(sell) || 0,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["units"] });
@@ -303,6 +307,8 @@ function UnitManagerDialog({
       setImei("");
       setColor("");
       setCapacity("");
+      setCost(product?.cost_price ? String(product.cost_price) : "");
+      setSell(product?.sell_price ? String(product.sell_price) : "");
     },
     onError: (err) => toast.error(apiErrorMessage(err, "Gagal menambah unit")),
   });
@@ -333,24 +339,66 @@ function UnitManagerDialog({
           <DialogDescription>Setiap unit fisik dibedakan lewat nomor IMEI, warna, dan kapasitas.</DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
-          <Input
-            value={imei}
-            onChange={(e) => setImei(e.target.value)}
-            placeholder="No. IMEI (15 digit)"
-            data-testid="imei-input"
-          />
-          <Input value={color} onChange={(e) => setColor(e.target.value)} placeholder="Warna" data-testid="imei-color-input" />
-          <Input
-            value={capacity}
-            onChange={(e) => setCapacity(e.target.value)}
-            placeholder="Kapasitas (cth. 256GB)"
-            data-testid="imei-capacity-input"
-          />
-          <Button onClick={submitUnit} disabled={addUnit.isPending} data-testid="imei-add-unit-btn">
+        <div className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 sm:grid-cols-2">
+          <div className="grid gap-1 sm:col-span-2">
+            <Label htmlFor="unit-imei">No. IMEI *</Label>
+            <Input
+              id="unit-imei"
+              value={imei}
+              onChange={(e) => setImei(e.target.value)}
+              placeholder="cth. 354912000000001"
+              data-testid="imei-input"
+            />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="unit-color">Warna</Label>
+            <Input
+              id="unit-color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              placeholder="cth. Midnight Black"
+              data-testid="imei-color-input"
+            />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="unit-capacity">Kapasitas</Label>
+            <Input
+              id="unit-capacity"
+              value={capacity}
+              onChange={(e) => setCapacity(e.target.value)}
+              placeholder="cth. 256GB"
+              data-testid="imei-capacity-input"
+            />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="unit-cost">Harga Modal (Rp)</Label>
+            <Input
+              id="unit-cost"
+              type="number"
+              min={0}
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              data-testid="imei-cost-input"
+            />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="unit-sell">Harga Jual (Rp)</Label>
+            <Input
+              id="unit-sell"
+              type="number"
+              min={0}
+              value={sell}
+              onChange={(e) => setSell(e.target.value)}
+              data-testid="imei-sell-input"
+            />
+          </div>
+          <Button className="sm:col-span-2" onClick={submitUnit} disabled={addUnit.isPending} data-testid="imei-add-unit-btn">
             <Plus className="h-4 w-4" /> Tambah Unit
           </Button>
         </div>
+        <p className="-mt-1 text-xs text-slate-400">
+          Harga modal &amp; jual per unit terisi otomatis dari harga produk — ubah jika harga beli unit berbeda.
+        </p>
 
         <div className="overflow-hidden rounded-lg border border-slate-200">
           <Table>
@@ -359,6 +407,8 @@ function UnitManagerDialog({
                 <TableHead>No. IMEI</TableHead>
                 <TableHead>Warna</TableHead>
                 <TableHead>Kapasitas</TableHead>
+                <TableHead className="text-right">Harga Modal</TableHead>
+                <TableHead className="text-right">Harga Jual</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead />
               </TableRow>
@@ -366,7 +416,7 @@ function UnitManagerDialog({
             <TableBody>
               {unitsQuery.isLoading && (
                 <TableRow>
-                  <TableCell colSpan={5}>
+                  <TableCell colSpan={7}>
                     <div className="h-6 animate-pulse rounded bg-slate-100" />
                   </TableCell>
                 </TableRow>
@@ -376,6 +426,12 @@ function UnitManagerDialog({
                   <TableCell className="font-mono text-xs font-semibold">{unit.imei}</TableCell>
                   <TableCell className="text-sm">{unit.color || "-"}</TableCell>
                   <TableCell className="text-sm">{unit.capacity || "-"}</TableCell>
+                  <TableCell className="text-right font-mono text-xs">
+                    {formatRupiah(unit.cost_price || (product?.cost_price ?? 0))}
+                  </TableCell>
+                  <TableCell className="text-right font-mono text-xs font-bold">
+                    {formatRupiah(unit.sell_price || (product?.sell_price ?? 0))}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
@@ -404,7 +460,7 @@ function UnitManagerDialog({
               ))}
               {!unitsQuery.isLoading && units.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-sm text-slate-400">
+                  <TableCell colSpan={7} className="py-8 text-center text-sm text-slate-400">
                     Belum ada unit. Tambahkan unit IMEI pertama.
                   </TableCell>
                 </TableRow>
@@ -647,7 +703,12 @@ export default function ProductsPage() {
       </div>
 
       <ProductFormDialog key={formProduct?.id ?? "new"} open={formOpen} onOpenChange={setFormOpen} product={formProduct} />
-      <UnitManagerDialog product={unitProduct} open={unitProduct !== null} onOpenChange={(open) => !open && setUnitProduct(null)} />
+      <UnitManagerDialog
+        key={unitProduct?.id ?? "none"}
+        product={unitProduct}
+        open={unitProduct !== null}
+        onOpenChange={(open) => !open && setUnitProduct(null)}
+      />
       <DeleteProductDialog
         product={deleteTarget}
         open={deleteTarget !== null}
