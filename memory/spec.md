@@ -15,10 +15,20 @@ Aplikasi kasir (POS) multi-toko untuk toko handphone & aksesoris. UI Bahasa Indo
 - Kode status: peran tidak berizin → **403**; data milik toko lain → **404** (tidak membocorkan keberadaan data).
 - **Field-level masking**: `cost_price` (produk & unit), `cost` (item transaksi), dan `profit` dikirim `null` untuk Kasir (`mask_cost`), bukan disembunyikan di UI.
 
+## Diskon per Item & Tipe Produk Voucher
+- **Diskon per item** (Kasir & Pemilik, tanpa batas): tiap baris keranjang bisa diberi diskon **nominal (Rp)** atau **persen (%)**. Server selalu menghitung ulang rupiah diskon dari `discount_type` + `discount_value` (`_resolve_discount`) — nilai uang dari klien tidak pernah dipercaya. Validasi: persen > 100 → **400**, nominal > harga item → **400**. UI meng-clamp input persen ke 100 sehingga state invalid tidak terjadi dari layar; tombol bayar dikunci bila tetap invalid.
+- Transaksi menyimpan `gross_total` (sebelum diskon), `discount_total`, dan `total`; tiap item menyimpan `price` (sebelum diskon), `discount_type`, `discount_value`, `discount`, `subtotal`. **Laba ikut turun** karena dihitung dari `subtotal − cost × qty`.
+- Struk menampilkan potongan per item + Subtotal & Total Diskon; riwayat menampilkan badge diskon per transaksi.
+- **Tipe produk `voucher`** (Voucher Pulsa): stok berupa jumlah (seperti aksesoris, bukan IMEI) dengan **dua harga** — `sell_price` (ritel) dan `wholesale_price` (grosir; 0 = ikut ritel). Kasir memilih tier **Ritel/Grosir** per baris keranjang (`price_tier`); tier hanya berlaku untuk voucher, tipe lain selalu ritel. Tier tersimpan di item transaksi dan tampil di struk sebagai "(Grosir)".
+- Menambah unit IMEI ke produk voucher/aksesoris → **409**.
+
+## Urutan transaksi (penting)
+`POST /transactions` berjalan 3 tahap: (1) ambil & validasi produk/unit/stok, (2) **hitung harga, diskon, dan lunasi pembayaran** — tunai kurang → 400 di sini, (3) baru klaim stok/unit secara atomik dengan rollback kompensasi. Urutan ini wajib: sebelumnya validasi tunai terjadi setelah stok dipotong sehingga checkout gagal tetap menghabiskan stok & menandai IMEI terjual (bug, sudah diperbaiki).
+
 ## Data Model (Mongo, db `app`)
 - `stores`: `id`, `name`, `address`, `phone`, `created_at`
 - `users`: `id`, `store_id`, `name`, `email` (unik global), `password_hash` (bcrypt), `role`, `is_active`, `created_at`
-- `products`: `id`, `store_id`, `name`, `brand`, `type` ("handphone"|"aksesoris"), `category`, `sku`, `cost_price`, `sell_price`, `stock_qty` (aksesoris), `min_stock`, `is_active`, `created_at`
+- `products`: `id`, `store_id`, `name`, `brand`, `type` ("handphone"|"aksesoris"|"voucher"), `category`, `sku`, `cost_price`, `sell_price` (ritel), `wholesale_price` (grosir, voucher), `stock_qty` (aksesoris & voucher), `min_stock`, `is_active`, `created_at`
 - `product_units`: unit fisik handphone — `id`, `store_id`, `product_id`, `imei` (**unik per toko**), `color`, `capacity`, `cost_price`, `sell_price` (0 = ikut harga produk), `status` ("in_stock"|"sold"), `sold_at`, `transaction_id`
 - `transactions`: `id`, `store_id`, `transaction_number` (TRX-YYYYMMDD-NNNN per toko, WIB), `items`[{product_id, product_name, unit_id?, imei?, color?, capacity?, qty, price, **cost**, subtotal}], `total`, **`profit`**, `payment_method`, `amount_paid`, `change_amount`, `customer_name/phone`, `cashier_name` (dari principal), **`client_ref`** (dedupe offline), `created_at`
 - Index kunci: `{store_id, imei}` unik, `{store_id, transaction_number}` unik, `{store_id, client_ref}` unik **partial** (`$type: string`), `{store_id, created_at}`. `ensure_indexes()` juga men-drop index single-tenant lama.

@@ -75,6 +75,14 @@ ACCESSORIES = [
     ("Voucher Data Telkomsel 10GB / 30 Hari", "Telkomsel", "VC-D10GB", "Voucher & Pulsa", 50000, 60000, 99),
 ]
 
+# Voucher pulsa/data: dijual ritel (sell_price) atau grosir (wholesale_price)
+VOUCHERS = [
+    ("Voucher Pulsa Telkomsel 25.000", "Telkomsel", "VC-TSEL25", 24000, 27000, 25500, 80),
+    ("Voucher Pulsa Telkomsel 50.000", "Telkomsel", "VC-TSEL50", 48500, 53000, 50500, 60),
+    ("Voucher Pulsa Indosat 25.000", "Indosat", "VC-ISAT25", 23800, 26500, 25000, 50),
+    ("Voucher Data XL 5GB / 30 Hari", "XL Axiata", "VC-XL5GB", 42000, 52000, 47000, 35),
+]
+
 CUSTOMERS = ["", "", "Budi Santoso", "Sari Wulandari", "Andi Pratama", "Rina Maulida", "Joko Susilo"]
 
 
@@ -132,6 +140,7 @@ async def seed() -> None:
             "sku": p["sku"],
             "cost_price": p["cost_price"],
             "sell_price": p["sell_price"],
+            "wholesale_price": 0,
             "stock_qty": 0,
             "min_stock": 2,
             "is_active": True,
@@ -153,6 +162,7 @@ async def seed() -> None:
             "sku": sku,
             "cost_price": cost,
             "sell_price": sell,
+            "wholesale_price": 0,
             "stock_qty": qty,
             "min_stock": 5,
             "is_active": True,
@@ -161,6 +171,27 @@ async def seed() -> None:
         await db.products.insert_one(dict(doc))
         products_docs[doc["id"]] = doc
         acc_docs.append(doc)
+
+    for name, brand, sku, cost, sell, wholesale, qty in VOUCHERS:
+        doc = {
+            "id": uid(),
+            "store_id": store_id,
+            "name": name,
+            "brand": brand,
+            "type": "voucher",
+            "category": "Voucher & Pulsa",
+            "sku": sku,
+            "cost_price": cost,
+            "sell_price": sell,  # harga ritel
+            "wholesale_price": wholesale,  # harga grosir
+            "stock_qty": qty,
+            "min_stock": 10,
+            "is_active": True,
+            "created_at": NOW,
+        }
+        await db.products.insert_one(dict(doc))
+        products_docs[doc["id"]] = doc
+        acc_docs.append(doc)  # sold like accessories in the seeded history
 
     # Serialized handphone units (15-digit IMEI per physical unit)
     units_by_product: dict[str, list[dict]] = {}
@@ -219,7 +250,11 @@ async def seed() -> None:
                             "capacity": None,
                             "qty": qty,
                             "price": acc["sell_price"],
+                            "price_tier": "ritel",
                             "cost": acc["cost_price"],
+                            "discount_type": None,
+                            "discount_value": 0,
+                            "discount": 0,
                             "subtotal": acc["sell_price"] * qty,
                         }
                     )
@@ -243,7 +278,11 @@ async def seed() -> None:
                             "capacity": unit["capacity"],
                             "qty": 1,
                             "price": product["sell_price"],
+                            "price_tier": "ritel",
                             "cost": product["cost_price"],
+                            "discount_type": None,
+                            "discount_value": 0,
+                            "discount": 0,
                             "subtotal": product["sell_price"],
                         }
                     )
@@ -259,6 +298,8 @@ async def seed() -> None:
                     "store_id": store_id,
                     "transaction_number": f"TRX-{key}-{day_counts[key]:04d}",
                     "items": items,
+                    "gross_total": total,
+                    "discount_total": 0,
                     "total": total,
                     "profit": profit,
                     "payment_method": payment_method,
@@ -288,7 +329,7 @@ async def seed() -> None:
             await db.products.update_one({"id": acc["id"]}, {"$inc": {"stock_qty": -sold}})
 
     await ensure_indexes()
-    print(f"Seeded demo store: {len(product_ids)} handphone, {len(acc_docs)} aksesoris, {len(txs)} transaksi.")
+    print(f"Seeded demo store: {len(product_ids)} handphone, {len(ACCESSORIES)} aksesoris, {len(VOUCHERS)} voucher pulsa, {len(txs)} transaksi.")
     print(f"  Pemilik: {DEMO_OWNER_EMAIL} / {DEMO_PASSWORD}")
     print(f"  Kasir  : {DEMO_CASHIER_EMAIL} / {DEMO_PASSWORD}")
 

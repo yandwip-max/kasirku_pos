@@ -1,8 +1,10 @@
 // Hand-written mirrors of the backend Pydantic models (backend/models/*.py).
 // Nothing infers across the Python boundary — keep these in sync in the same edit.
 
-export type ProductType = "handphone" | "aksesoris";
+export type ProductType = "handphone" | "aksesoris" | "voucher";
 export type Role = "pemilik" | "kasir";
+export type DiscountType = "nominal" | "persen";
+export type PriceTier = "ritel" | "grosir";
 
 export interface Store {
   id: string;
@@ -64,7 +66,8 @@ export interface Product {
   sku: string;
   /** null when the signed-in role may not see harga modal (Kasir) */
   cost_price: number | null;
-  sell_price: number;
+  sell_price: number; // harga ritel
+  wholesale_price: number; // harga grosir (voucher); 0 = ikut harga ritel
   stock_qty: number;
   min_stock: number;
   is_active: boolean;
@@ -97,10 +100,14 @@ export interface TransactionItem {
   color: string | null;
   capacity: string | null;
   qty: number;
-  price: number;
+  price: number; // unit price BEFORE discount
+  price_tier: PriceTier;
   /** harga modal snapshot; null when masked for Kasir */
   cost: number | null;
-  subtotal: number;
+  discount_type: DiscountType | null;
+  discount_value: number;
+  discount: number; // resolved rupiah taken off this line
+  subtotal: number; // qty * price - discount
 }
 
 export interface Transaction {
@@ -108,6 +115,8 @@ export interface Transaction {
   store_id: string;
   transaction_number: string;
   items: TransactionItem[];
+  gross_total: number;
+  discount_total: number;
   total: number;
   /** null when masked for Kasir */
   profit: number | null;
@@ -125,6 +134,10 @@ export interface CartLine {
   product: Product;
   unit: ProductUnit | null; // handphone: the specific IMEI unit sold
   qty: number;
+  /** voucher only: which price tier this line is sold at */
+  priceTier: PriceTier;
+  discountType: DiscountType | null;
+  discountValue: number; // rupiah for "nominal", percent for "persen"
 }
 
 export interface DailyPoint {
@@ -186,6 +199,7 @@ export interface ProductPayload {
   sku: string;
   cost_price: number;
   sell_price: number;
+  wholesale_price: number;
   stock_qty: number;
   min_stock: number;
 }
@@ -199,7 +213,14 @@ export interface UnitPayload {
 }
 
 export interface CheckoutPayload {
-  items: { product_id: string; unit_id: string | null; qty: number }[];
+  items: {
+    product_id: string;
+    unit_id: string | null;
+    qty: number;
+    price_tier: PriceTier;
+    discount_type: DiscountType | null;
+    discount_value: number;
+  }[];
   payment_method: "tunai" | "qris";
   amount_paid: number | null;
   customer_name: string;

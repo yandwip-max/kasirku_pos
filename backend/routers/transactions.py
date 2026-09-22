@@ -1,17 +1,20 @@
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List
+from typing import List, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from lib.auth import Principal, mask_cost, require
 from lib.scoped import ScopedRepo, scoped_repo
-from models.transaction import CheckoutIn, Transaction, TransactionItemOut
+from models.transaction import CartItemIn, CheckoutIn, Transaction, TransactionItemOut
 
 router = APIRouter(prefix="/transactions")
 WIB = ZoneInfo("Asia/Jakarta")
+
+# Stock for these types is a plain quantity; handphones are tracked per IMEI unit.
+QTY_TYPES = ("aksesoris", "voucher")
 
 
 def _aware(dt: datetime) -> datetime:
@@ -23,14 +26,41 @@ def _trx_out(doc: dict, principal: Principal) -> Transaction:
     items = [
         TransactionItemOut(**{**item, "cost": mask_cost(principal, item.get("cost", 0))}) for item in doc["items"]
     ]
+    gross = doc.get("gross_total") or sum(i.qty * i.price for i in items)
     return Transaction(
         **{
             **doc,
             "items": [i.model_dump() for i in items],
+            "gross_total": gross,
+            "discount_total": doc.get("discount_total", 0),
             "created_at": _aware(doc["created_at"]),
             "profit": mask_cost(principal, doc.get("profit", 0)),
         }
     )
+
+
+def _tier_price(product: dict, tier: str) -> int:
+    """Voucher lines may be sold at the wholesale tier; everything else is retail."""
+    if product["type"] == "voucher" and tier == "grosir":
+        return int(product.get("wholesale_price") or 0) or product["sell_price"]
+    return product["sell_price"]
+
+
+def _resolve_discount(item: CartItemIn, gross: int, product_name: str) -> int:
+    """Turn the requested discount into rupiah. Never trust a client-sent amount."""
+    if not item.discount_type or item.discount_value <= 0:
+        return 0
+    if item.discount_value < 0:
+        raise HTTPException(status_code=400, detail="Diskon tidak boleh negatif")
+    if item.discount_type == "persen":
+        if item.discount_value > 100:
+            raise HTTPException(status_code=400, detail="Diskon persen maksimal 100%")
+        return gross * item.discount_value // 100
+    if item.discount_value > gross:
+        raise HTTPException(
+            status_code=400, detail=f"Diskon {product_name} melebihi harga item"
+        )
+    return item.discount_value
 
 
 @router.get("", response_model=List[Transaction])
@@ -117,15 +147,68 @@ async def create_transaction(
             if product.get("stock_qty", 0) < item.qty:
                 raise HTTPException(status_code=409, detail=f"Stok {product['name']} tidak mencukupi")
 
-    # Pass 2 — atomic claims; roll back everything if any claim fails mid-flight.
-    out_items: list[TransactionItemOut] = []
+    # Pass 2 — price every line and settle the payment BEFORE touching stock. A rejected
+    # payment must never leave stock decremented or an IMEI flagged sold.
+    planned: list[tuple[dict, Optional[dict], TransactionItemOut]] = []
+    for item in input.items:
+        product = products_by_id[item.product_id]
+        if product["type"] == "handphone":
+            unit = units_by_id[item.unit_id]
+            # a unit may carry its own IMEI-specific price; fall back to the product price
+            price = int(unit.get("sell_price") or 0) or product["sell_price"]
+            cost = int(unit.get("cost_price") or 0) or product.get("cost_price", 0)
+            qty, tier = 1, "ritel"
+        else:
+            unit = None
+            tier = item.price_tier if product["type"] == "voucher" else "ritel"
+            price = _tier_price(product, tier)
+            cost = product.get("cost_price", 0)
+            qty = item.qty
+
+        gross = price * qty
+        discount = _resolve_discount(item, gross, product["name"])
+        planned.append(
+            (
+                product,
+                unit,
+                TransactionItemOut(
+                    product_id=product["id"],
+                    product_name=product["name"],
+                    unit_id=unit["id"] if unit else None,
+                    imei=unit["imei"] if unit else None,
+                    color=unit.get("color", "") if unit else None,
+                    capacity=unit.get("capacity", "") if unit else None,
+                    qty=qty,
+                    price=price,
+                    price_tier=tier,
+                    cost=cost,  # snapshot: later price edits must not rewrite history
+                    discount_type=item.discount_type if discount else None,
+                    discount_value=item.discount_value if discount else 0,
+                    discount=discount,
+                    subtotal=gross - discount,
+                ),
+            )
+        )
+
+    out_items = [line for _, _, line in planned]
+    gross_total = sum(i.qty * i.price for i in out_items)
+    discount_total = sum(i.discount for i in out_items)
+    total = sum(i.subtotal for i in out_items)
+    # discounts shrink the margin, so profit follows the discounted subtotal
+    profit = sum(i.subtotal - (i.cost or 0) * i.qty for i in out_items)
+    if input.payment_method == "tunai":
+        paid = input.amount_paid or 0
+        if paid < total:
+            raise HTTPException(status_code=400, detail="Jumlah uang tunai kurang dari total")
+    else:
+        paid = total
+
+    # Pass 3 — atomic claims; roll back everything if any claim fails mid-flight.
     claimed_units: list[str] = []
     decremented: list[tuple[str, int]] = []
     try:
-        for item in input.items:
-            product = products_by_id[item.product_id]
-            if product["type"] == "handphone":
-                unit = units_by_id[item.unit_id]
+        for product, unit, line in planned:
+            if unit is not None:
                 claimed = await repo.update_one(
                     "product_units",
                     {"id": unit["id"], "status": "in_stock"},
@@ -134,42 +217,15 @@ async def create_transaction(
                 if claimed.matched_count == 0:
                     raise HTTPException(status_code=409, detail=f"IMEI {unit['imei']} sudah terjual")
                 claimed_units.append(unit["id"])
-                # a unit may carry its own IMEI-specific price; fall back to the product price
-                unit_price = int(unit.get("sell_price") or 0) or product["sell_price"]
-                unit_cost = int(unit.get("cost_price") or 0) or product.get("cost_price", 0)
-                out_items.append(
-                    TransactionItemOut(
-                        product_id=product["id"],
-                        product_name=product["name"],
-                        unit_id=unit["id"],
-                        imei=unit["imei"],
-                        color=unit.get("color", ""),
-                        capacity=unit.get("capacity", ""),
-                        qty=1,
-                        price=unit_price,
-                        cost=unit_cost,  # snapshot: later price edits must not rewrite history
-                        subtotal=unit_price,
-                    )
-                )
             else:
                 updated = await repo.update_one(
                     "products",
-                    {"id": product["id"], "stock_qty": {"$gte": item.qty}},
-                    {"$inc": {"stock_qty": -item.qty}},
+                    {"id": product["id"], "stock_qty": {"$gte": line.qty}},
+                    {"$inc": {"stock_qty": -line.qty}},
                 )
                 if updated.matched_count == 0:
                     raise HTTPException(status_code=409, detail=f"Stok {product['name']} tidak mencukupi")
-                decremented.append((product["id"], item.qty))
-                out_items.append(
-                    TransactionItemOut(
-                        product_id=product["id"],
-                        product_name=product["name"],
-                        qty=item.qty,
-                        price=product["sell_price"],
-                        cost=product.get("cost_price", 0),
-                        subtotal=product["sell_price"] * item.qty,
-                    )
-                )
+                decremented.append((product["id"], line.qty))
     except HTTPException:
         for unit_id in claimed_units:
             await repo.update_one(
@@ -181,20 +237,13 @@ async def create_transaction(
             await repo.update_one("products", {"id": product_id}, {"$inc": {"stock_qty": qty}})
         raise
 
-    total = sum(i.subtotal for i in out_items)
-    profit = sum(i.subtotal - (i.cost or 0) * i.qty for i in out_items)
-    if input.payment_method == "tunai":
-        paid = input.amount_paid or 0
-        if paid < total:
-            raise HTTPException(status_code=400, detail="Jumlah uang tunai kurang dari total")
-    else:
-        paid = total
-
     trx = Transaction(
         id=trx_id,
         store_id=principal.store_id,
         transaction_number=trx_number,
         items=out_items,
+        gross_total=gross_total,
+        discount_total=discount_total,
         total=total,
         profit=profit,
         payment_method=input.payment_method,

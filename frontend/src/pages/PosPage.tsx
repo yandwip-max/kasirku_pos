@@ -5,9 +5,9 @@ import { Search } from "lucide-react";
 import { apiGet, apiPost, OfflineError } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
-import { linePrice, cartTotal } from "@/lib/cart";
+import { linePrice, cartTotal, cartGross, cartDiscount, lineDiscount, lineSubtotal } from "@/lib/cart";
 import { enqueueSale, newClientRef, pendingLinesFromCart } from "@/lib/offlineQueue";
-import type { CartLine, CheckoutPayload, Product, ProductUnit, Transaction } from "@/lib/types";
+import type { CartLine, CheckoutPayload, DiscountType, PriceTier, Product, ProductUnit, Transaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import ProductGrid from "@/components/pos/ProductGrid";
 import ImeiUnitDialog from "@/components/pos/ImeiUnitDialog";
@@ -21,6 +21,7 @@ const CATEGORIES = [
   { id: "all", label: "Semua", testid: "pos-category-filter-all" },
   { id: "handphone", label: "Handphone", testid: "pos-category-filter-handphone" },
   { id: "accessories", label: "Aksesoris", testid: "pos-category-filter-accessories" },
+  { id: "voucher", label: "Voucher Pulsa", testid: "pos-category-filter-voucher" },
 ] as const;
 type CategoryId = (typeof CATEGORIES)[number]["id"];
 
@@ -43,9 +44,15 @@ function offlineReceipt(cart: CartLine[], payload: CheckoutPayload, cashierName:
       capacity: line.unit?.capacity ?? null,
       qty: line.qty,
       price: linePrice(line),
+      price_tier: line.priceTier,
       cost: null,
-      subtotal: linePrice(line) * line.qty,
+      discount_type: lineDiscount(line) > 0 ? line.discountType : null,
+      discount_value: lineDiscount(line) > 0 ? line.discountValue : 0,
+      discount: lineDiscount(line),
+      subtotal: lineSubtotal(line),
     })),
+    gross_total: cartGross(cart),
+    discount_total: cartDiscount(cart),
     total,
     profit: null,
     payment_method: payload.payment_method,
@@ -79,6 +86,7 @@ export default function PosPage() {
       if (search.trim()) params.set("search", search.trim());
       if (category === "handphone") params.set("type", "handphone");
       if (category === "accessories") params.set("type", "aksesoris");
+      if (category === "voucher") params.set("type", "voucher");
       return apiGet<Product[]>(`/products?${params.toString()}`);
     },
   });
@@ -112,7 +120,7 @@ export default function PosPage() {
         toast.error("Stok habis");
         return prev;
       }
-      return [...prev, { product, unit: null, qty: 1 }];
+      return [...prev, { product, unit: null, qty: 1, priceTier: "ritel", discountType: null, discountValue: 0 }];
     });
     toast.success(`${product.name} ditambahkan ke keranjang`);
   }
@@ -132,7 +140,7 @@ export default function PosPage() {
   function addPhoneUnit(product: Product, unit: ProductUnit) {
     setCart((prev) => {
       if (prev.some((l) => l.unit?.id === unit.id)) return prev;
-      return [...prev, { product, unit, qty: 1 }];
+      return [...prev, { product, unit, qty: 1, priceTier: "ritel", discountType: null, discountValue: 0 }];
     });
     toast.success(`${product.name} (IMEI ${unit.imei}) ditambahkan ke keranjang`);
   }
@@ -148,7 +156,14 @@ export default function PosPage() {
     if (cart.length === 0) return;
     const clientRef = newClientRef();
     const payload: CheckoutPayload = {
-      items: cart.map((l) => ({ product_id: l.product.id, unit_id: l.unit?.id ?? null, qty: l.qty })),
+      items: cart.map((l) => ({
+        product_id: l.product.id,
+        unit_id: l.unit?.id ?? null,
+        qty: l.qty,
+        price_tier: l.priceTier,
+        discount_type: l.discountType,
+        discount_value: l.discountValue,
+      })),
       payment_method: method,
       amount_paid: amountPaid,
       customer_name: customer.name,
@@ -243,6 +258,14 @@ export default function PosPage() {
             onRemove={(line) => setCart((prev) => prev.filter((l) => !sameLine(l, line)))}
             onQtyChange={(line, qty) =>
               setCart((prev) => prev.map((l) => (sameLine(l, line) ? { ...l, qty } : l)))
+            }
+            onDiscountChange={(line, type, value) =>
+              setCart((prev) =>
+                prev.map((l) => (sameLine(l, line) ? { ...l, discountType: type, discountValue: value } : l)),
+              )
+            }
+            onTierChange={(line, tier) =>
+              setCart((prev) => prev.map((l) => (sameLine(l, line) ? { ...l, priceTier: tier } : l)))
             }
             onClear={() => setCart([])}
             onCheckout={(name, phone) => {

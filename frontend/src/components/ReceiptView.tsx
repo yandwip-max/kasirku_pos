@@ -19,6 +19,9 @@ function Dotted() {
 export default function ReceiptView({ transaction }: { transaction: Transaction }) {
   const { store } = useAuth();
   const t = transaction;
+  const discountTotal = t.discount_total ?? 0;
+  const grossTotal = t.gross_total || t.items.reduce((sum, i) => sum + i.price * i.qty, 0);
+
   return (
     <div
       id="receipt-print-area"
@@ -38,7 +41,10 @@ export default function ReceiptView({ transaction }: { transaction: Transaction 
       <div className="space-y-1.5">
         {t.items.map((item, idx) => (
           <div key={`${item.product_id}-${idx}`}>
-            <p className="font-semibold">{item.product_name}</p>
+            <p className="font-semibold">
+              {item.product_name}
+              {item.price_tier === "grosir" ? " (Grosir)" : ""}
+            </p>
             {item.imei ? (
               <p className="text-[10px] text-slate-500">
                 IMEI {item.imei} · {item.color} · {item.capacity}
@@ -48,12 +54,26 @@ export default function ReceiptView({ transaction }: { transaction: Transaction 
               <span>
                 {item.qty} x {formatRupiah(item.price)}
               </span>
-              <span>{formatRupiah(item.subtotal)}</span>
+              <span>{formatRupiah(item.price * item.qty)}</span>
             </div>
+            {item.discount > 0 && (
+              <div className="flex justify-between text-slate-600">
+                <span>
+                  Diskon{item.discount_type === "persen" ? ` ${item.discount_value}%` : ""}
+                </span>
+                <span>−{formatRupiah(item.discount)}</span>
+              </div>
+            )}
           </div>
         ))}
       </div>
       <Dotted />
+      {discountTotal > 0 && (
+        <>
+          <Row label="Subtotal" value={formatRupiah(grossTotal)} />
+          <Row label="Total Diskon" value={`−${formatRupiah(discountTotal)}`} />
+        </>
+      )}
       <div className="flex justify-between text-sm font-bold">
         <span>TOTAL</span>
         <span>{formatRupiah(t.total)}</span>

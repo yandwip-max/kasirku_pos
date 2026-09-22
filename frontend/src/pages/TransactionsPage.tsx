@@ -151,7 +151,14 @@ export default function TransactionsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm">{t.customer_name || "-"}</TableCell>
-                    <TableCell className="text-right font-mono text-sm font-bold">{formatRupiah(t.total)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm font-bold">
+                      {formatRupiah(t.total)}
+                      {t.discount_total > 0 ? (
+                        <span className="block text-[11px] font-normal text-emerald-700" data-testid="transaction-row-discount">
+                          Diskon −{formatRupiah(t.discount_total)}
+                        </span>
+                      ) : null}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" data-testid="transaction-detail-btn" onClick={() => setDetail(t)}>
                         Detail

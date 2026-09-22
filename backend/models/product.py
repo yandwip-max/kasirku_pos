@@ -4,6 +4,11 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+# "voucher" (pulsa/data) behaves like an accessory for stock, but carries two price tiers:
+# retail (sell_price) and wholesale (wholesale_price) picked per cart line at checkout.
+ProductType = Literal["handphone", "aksesoris", "voucher"]
+PriceTier = Literal["ritel", "grosir"]
+
 
 def _uuid() -> str:
     return str(uuid.uuid4())
@@ -18,12 +23,13 @@ class Product(BaseModel):
     store_id: str = ""
     name: str
     brand: str = ""
-    type: Literal["handphone", "aksesoris"] = "aksesoris"
+    type: ProductType = "aksesoris"
     category: str = "Lainnya"
     sku: str = ""
     cost_price: Optional[int] = 0  # None when masked for Kasir
-    sell_price: int = 0
-    # accessories only — handphone stock is the count of in_stock units
+    sell_price: int = 0  # harga ritel
+    wholesale_price: int = 0  # harga grosir (voucher); 0 = ikut harga ritel
+    # accessories & vouchers only — handphone stock is the count of in_stock units
     stock_qty: int = 0
     min_stock: int = 5
     is_active: bool = True
@@ -31,7 +37,7 @@ class Product(BaseModel):
 
 
 class ProductWithStock(Product):
-    """Product plus the computed sellable stock (units for phones, qty for accessories)."""
+    """Product plus the computed sellable stock (units for phones, qty for the rest)."""
 
     stock: int = 0
 
@@ -39,11 +45,12 @@ class ProductWithStock(Product):
 class ProductCreate(BaseModel):
     name: str
     brand: str = ""
-    type: Literal["handphone", "aksesoris"] = "aksesoris"
+    type: ProductType = "aksesoris"
     category: str = "Lainnya"
     sku: str = ""
     cost_price: int = 0
     sell_price: int = 0
+    wholesale_price: int = 0
     stock_qty: int = 0
     min_stock: int = 5
 
@@ -55,6 +62,7 @@ class ProductUpdate(BaseModel):
     sku: Optional[str] = None
     cost_price: Optional[int] = None
     sell_price: Optional[int] = None
+    wholesale_price: Optional[int] = None
     stock_qty: Optional[int] = None
     min_stock: Optional[int] = None
     is_active: Optional[bool] = None

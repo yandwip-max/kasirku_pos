@@ -26,12 +26,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 
 const ACCESSORY_CATEGORIES = ["Aksesoris & Casing", "Charger & Kabel", "Audio / TWS", "Voucher & Pulsa", "Lainnya"];
-const TYPE_LABELS: Record<ProductType, string> = { handphone: "Handphone", aksesoris: "Aksesoris" };
+const TYPE_LABELS: Record<ProductType, string> = {
+  handphone: "Handphone",
+  aksesoris: "Aksesoris",
+  voucher: "Voucher Pulsa",
+};
 
 const TYPE_FILTERS = [
   { id: "", label: "Semua Tipe", testid: "product-filter-type-all" },
   { id: "handphone", label: "Handphone", testid: "product-filter-type-handphone" },
   { id: "aksesoris", label: "Aksesoris", testid: "product-filter-type-aksesoris" },
+  { id: "voucher", label: "Voucher Pulsa", testid: "product-filter-type-voucher" },
 ] as const;
 
 interface FormState {
@@ -42,6 +47,7 @@ interface FormState {
   sku: string;
   cost_price: string;
   sell_price: string;
+  wholesale_price: string;
   stock_qty: string;
   min_stock: string;
 }
@@ -55,6 +61,7 @@ function emptyForm(): FormState {
     sku: "",
     cost_price: "",
     sell_price: "",
+    wholesale_price: "",
     stock_qty: "0",
     min_stock: "5",
   };
@@ -67,8 +74,9 @@ function productToForm(p: Product): FormState {
     type: p.type,
     category: p.category,
     sku: p.sku,
-    cost_price: String(p.cost_price),
+    cost_price: String(p.cost_price ?? 0),
     sell_price: String(p.sell_price),
+    wholesale_price: String(p.wholesale_price ?? 0),
     stock_qty: String(p.stock_qty),
     min_stock: String(p.min_stock),
   };
@@ -111,6 +119,7 @@ function ProductFormDialog({
       sku: form.sku.trim(),
       cost_price: Number(form.cost_price) || 0,
       sell_price: Number(form.sell_price) || 0,
+      wholesale_price: form.type === "voucher" ? Number(form.wholesale_price) || 0 : 0,
       stock_qty: Number(form.stock_qty) || 0,
       min_stock: Number(form.min_stock) || 5,
     });
@@ -137,7 +146,16 @@ function ProductFormDialog({
                 disabled={product !== null}
                 onValueChange={(value) => {
                   const type = value as ProductType;
-                  setForm((f) => ({ ...f, type, category: type === "handphone" ? "Handphone" : ACCESSORY_CATEGORIES[0] }));
+                  setForm((f) => ({
+                    ...f,
+                    type,
+                    category:
+                      type === "handphone"
+                        ? "Handphone"
+                        : type === "voucher"
+                          ? "Voucher & Pulsa"
+                          : ACCESSORY_CATEGORIES[0],
+                  }));
                 }}
               >
                 <SelectTrigger data-testid="product-type-select">
@@ -146,6 +164,7 @@ function ProductFormDialog({
                 <SelectContent>
                   <SelectItem value="handphone">Handphone (per IMEI)</SelectItem>
                   <SelectItem value="aksesoris">Aksesoris (jumlah)</SelectItem>
+                  <SelectItem value="voucher">Voucher Pulsa (grosir &amp; ritel)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -153,7 +172,7 @@ function ProductFormDialog({
               <Label>Kategori</Label>
               <Select
                 value={form.category}
-                disabled={form.type === "handphone"}
+                disabled={form.type !== "aksesoris"}
                 onValueChange={(value) => set("category", value)}
               >
                 <SelectTrigger data-testid="product-category-select">
@@ -162,6 +181,8 @@ function ProductFormDialog({
                 <SelectContent>
                   {form.type === "handphone" ? (
                     <SelectItem value="Handphone">Handphone</SelectItem>
+                  ) : form.type === "voucher" ? (
+                    <SelectItem value="Voucher & Pulsa">Voucher &amp; Pulsa</SelectItem>
                   ) : (
                     ACCESSORY_CATEGORIES.map((c) => (
                       <SelectItem key={c} value={c}>
@@ -209,7 +230,9 @@ function ProductFormDialog({
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="product-sell">Harga Jual (Rp)</Label>
+              <Label htmlFor="product-sell">
+                {form.type === "voucher" ? "Harga Jual Ritel (Rp)" : "Harga Jual (Rp)"}
+              </Label>
               <Input
                 id="product-sell"
                 type="number"
@@ -221,7 +244,26 @@ function ProductFormDialog({
             </div>
           </div>
 
-          {form.type === "aksesoris" && (
+          {form.type === "voucher" && (
+            <div className="grid gap-2">
+              <Label htmlFor="product-wholesale">Harga Jual Grosir (Rp)</Label>
+              <Input
+                id="product-wholesale"
+                type="number"
+                min={0}
+                value={form.wholesale_price}
+                onChange={(e) => set("wholesale_price", e.target.value)}
+                placeholder="Kosongkan / 0 untuk ikut harga ritel"
+                data-testid="product-wholesale-input"
+              />
+              <p className="text-xs text-slate-500">
+                Kasir memilih <span className="font-medium">Ritel</span> atau{" "}
+                <span className="font-medium">Grosir</span> per item di keranjang saat transaksi.
+              </p>
+            </div>
+          )}
+
+          {(form.type === "aksesoris" || form.type === "voucher") && (
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-2">
                 <Label htmlFor="product-stock">Jumlah Stok</Label>
@@ -637,14 +679,23 @@ export default function ProductsPage() {
                           className={cn(
                             p.type === "handphone"
                               ? "border-sky-200 bg-sky-50 text-sky-700"
-                              : "border-amber-200 bg-amber-50 text-amber-700",
+                              : p.type === "voucher"
+                                ? "border-violet-200 bg-violet-50 text-violet-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700",
                           )}
                         >
                           {TYPE_LABELS[p.type]}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-sm text-slate-600">{p.category}</TableCell>
-                      <TableCell className="text-right font-mono text-sm font-bold">{formatRupiah(p.sell_price)}</TableCell>
+                      <TableCell className="text-right font-mono text-sm font-bold">
+                        {formatRupiah(p.sell_price)}
+                        {p.type === "voucher" && p.wholesale_price > 0 ? (
+                          <span className="block text-[11px] font-normal text-violet-600" data-testid="product-row-wholesale">
+                            Grosir {formatRupiah(p.wholesale_price)}
+                          </span>
+                        ) : null}
+                      </TableCell>
                       <TableCell>
                         <Badge
                           variant="outline"

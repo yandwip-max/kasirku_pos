@@ -7,10 +7,16 @@ import { cn } from "@/lib/utils";
 
 function categoryIcon(product: Product) {
   if (product.type === "handphone") return Smartphone;
+  if (product.type === "voucher") return Gift;
   if (product.category.includes("Audio")) return Headphones;
   if (product.category.includes("Charger")) return Cable;
-  if (product.category.includes("Voucher")) return Gift;
+  if (product.category.includes("Powerbank")) return BatteryCharging;
   return Package;
+}
+
+function stockLabel(product: Product): string {
+  if (product.type === "handphone") return `${product.stock} unit`;
+  return `${product.stock} pcs`;
 }
 
 interface ProductGridProps {
@@ -41,6 +47,7 @@ export default function ProductGrid({ products, isLoading, isError, onAdd }: Pro
         products.map((p) => {
           const Icon = categoryIcon(p);
           const low = p.stock < p.min_stock;
+          const hasWholesale = p.type === "voucher" && p.wholesale_price > 0;
           return (
             <div
               key={p.id}
@@ -48,7 +55,12 @@ export default function ProductGrid({ products, isLoading, isError, onAdd }: Pro
               className="flex flex-col rounded-xl border border-slate-200 bg-white p-3 transition-shadow duration-100 hover:shadow-md"
             >
               <div className="flex items-start justify-between gap-1">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sky-50 text-[#0284C7]">
+                <div
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-lg",
+                    p.type === "voucher" ? "bg-violet-50 text-violet-600" : "bg-sky-50 text-[#0284C7]",
+                  )}
+                >
                   <Icon className="h-4 w-4" />
                 </div>
                 <Badge
@@ -58,15 +70,20 @@ export default function ProductGrid({ products, isLoading, isError, onAdd }: Pro
                     low ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700",
                   )}
                 >
-                  {p.type === "handphone" ? `${p.stock} unit` : `${p.stock} pcs`}
+                  {stockLabel(p)}
                 </Badge>
               </div>
               <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug">{p.name}</p>
               <p className="truncate text-xs text-slate-500">
-                {p.brand || p.category}
+                {p.type === "voucher" ? "Voucher Pulsa" : p.brand || p.category}
                 {p.sku ? ` · ${p.sku}` : ""}
               </p>
               <p className="mt-1 font-mono text-sm font-bold tracking-tight">{formatRupiah(p.sell_price)}</p>
+              {hasWholesale && (
+                <p className="font-mono text-[11px] text-violet-600" data-testid="product-card-wholesale-price">
+                  Grosir {formatRupiah(p.wholesale_price)}
+                </p>
+              )}
               <Button
                 size="sm"
                 className="mt-2 w-full active:scale-[0.98] transition-transform duration-100"

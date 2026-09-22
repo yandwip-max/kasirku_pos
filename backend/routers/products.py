@@ -56,7 +56,7 @@ async def list_products(
             {"brand": {"$regex": escaped, "$options": "i"}},
             {"id": {"$in": unit_ids}},
         ]
-    if type in ("handphone", "aksesoris"):
+    if type in ("handphone", "aksesoris", "voucher"):
         query["type"] = type
 
     docs = await repo.find("products", query).sort([("type", DESCENDING), ("name", 1)]).to_list(1000)
@@ -154,7 +154,7 @@ async def add_unit(
     if not product:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     if product["type"] != "handphone":
-        raise HTTPException(status_code=409, detail="Stok aksesoris diatur lewat jumlah stok, bukan IMEI")
+        raise HTTPException(status_code=409, detail="Stok produk ini diatur lewat jumlah stok, bukan IMEI")
     imei = input.imei.strip()
     if not imei:
         raise HTTPException(status_code=400, detail="IMEI wajib diisi")
