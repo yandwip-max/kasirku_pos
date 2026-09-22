@@ -1,0 +1,233 @@
+{
+  "project_name": "KasirKu POS - Toko Handphone & Aksesoris",
+  "archetype": "ARCHETYPE 4: SWISS & HIGH-CONTRAST + ARCHETYPE 2: TACTICAL PRECISION (Clean Light Theme)",
+  "language": "id-ID (Bahasa Indonesia)",
+  "colors": {
+    "surfaces": [
+      {
+        "name": "page",
+        "kind": "solid",
+        "bg": "#F8FAFC",
+        "on_bg": "#0F172A",
+        "on_bg_muted": "#475569"
+      },
+      {
+        "name": "panel",
+        "kind": "solid",
+        "bg": "#FFFFFF",
+        "on_bg": "#0F172A",
+        "on_bg_muted": "#475569"
+      },
+      {
+        "name": "panel_subtle",
+        "kind": "solid",
+        "bg": "#F1F5F9",
+        "on_bg": "#0F172A",
+        "on_bg_muted": "#475569"
+      },
+      {
+        "name": "inverse",
+        "kind": "solid",
+        "bg": "#0F172A",
+        "on_bg": "#FFFFFF",
+        "on_bg_muted": "#94A3B8"
+      },
+      {
+        "name": "receipt_paper",
+        "kind": "solid",
+        "bg": "#FFFFFF",
+        "on_bg": "#1E293B",
+        "on_bg_muted": "#64748B",
+        "roles": {
+          "link": "#0284C7",
+          "error": "#DC2626",
+          "success": "#16A34A"
+        }
+      },
+      {
+        "name": "header",
+        "kind": "solid",
+        "bg": "#FFFFFF",
+        "on_bg": "#0F172A",
+        "on_bg_muted": "#475569"
+      },
+      {
+        "name": "qris_badge",
+        "kind": "solid",
+        "bg": "#EFF6FF",
+        "on_bg": "#1E40AF",
+        "on_bg_muted": "#3B82F6"
+      },
+      {
+        "name": "cash_badge",
+        "kind": "solid",
+        "bg": "#F0FDF4",
+        "on_bg": "#166534",
+        "on_bg_muted": "#22C55E"
+      },
+      {
+        "name": "stock_low_badge",
+        "kind": "solid",
+        "bg": "#FEF2F2",
+        "on_bg": "#991B1B",
+        "on_bg_muted": "#EF4444"
+      }
+    ],
+    "accent": "#0284C7",
+    "on_accent": "#FFFFFF",
+    "accent_hover": "#0369A1",
+    "border_default": "#E2E8F0",
+    "border_strong": "#CBD5E1",
+    "success": "#16A34A",
+    "on_success": "#FFFFFF",
+    "warning": "#D97706",
+    "on_warning": "#FFFFFF",
+    "danger": "#DC2626",
+    "on_danger": "#FFFFFF"
+  },
+  "typography": {
+    "font_family_heading": "'Manrope Variable', sans-serif",
+    "font_family_sans": "'IBM Plex Sans', sans-serif",
+    "font_family_mono": "'JetBrains Mono Variable', monospace",
+    "css_import": "@import '@fontsource-variable/manrope';\n@import '@fontsource/ibm-plex-sans';\n@import '@fontsource-variable/jetbrains-mono';",
+    "scale_px": {
+      "display": 48,
+      "h1": 36,
+      "h2": 28,
+      "h3": 22,
+      "body": 16,
+      "caption": 14
+    },
+    "currency_style": {
+      "format": "Rp X.XXX.XXX (Indonesian Rupiah formatting)",
+      "font_family": "font-mono font-bold tracking-tight"
+    }
+  },
+  "entry_surfaces": {
+    "/": "split cashier terminal — filterable product & IMEI catalog left (8 cols), active order cart and real-time total panel right (4 cols)",
+    "/products": "inventory control center — serialized phone/IMEI units table and quantity accessory tracker with action header",
+    "/transactions": "audit log — searchable receipt ledger with transaction status, payment pill, and instant reprint slideover",
+    "/reports": "financial summary — daily turnover KPI tiles, sales trend chart, and QRIS vs Cash distribution"
+  },
+  "layout_and_navigation": {
+    "theme": "Light & Clean (Terang & Bersih) with high contrast borders and crisp data density",
+    "top_navbar": {
+      "brand": "KasirKu Cell & Acc",
+      "tagline": "Sistem POS Handphone & Aksesoris",
+      "links": [
+        { "id": "pos", "label": "Kasir (POS)", "path": "/", "icon": "ShoppingCart" },
+        { "id": "products", "label": "Stok & Produk", "path": "/products", "icon": "Package" },
+        { "id": "transactions", "label": "Riwayat Transaksi", "path": "/transactions", "icon": "History" },
+        { "id": "reports", "label": "Laporan Penjualan", "path": "/reports", "icon": "BarChart3" }
+      ],
+      "actions": [
+        { "id": "active_shift", "label": "Shift Aktif: Kasir Pagi", "type": "badge" },
+        { "id": "quick_cash_drawer", "label": "Status Kasir: Siap", "type": "status_indicator" }
+      ]
+    },
+    "grid_modes": {
+      "pos_screen": "grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 h-[calc(100vh-4.5rem)]",
+      "pos_catalog": "col-span-1 lg:col-span-7 xl:col-span-8 flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden",
+      "pos_cart": "col-span-1 lg:col-span-5 xl:col-span-4 flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+    }
+  },
+  "key_features_and_flows": {
+    "1_pos_checkout": {
+      "search_and_filter": "Instant search by product name, barcode, or specific IMEI number. Category pills: 'Semua', 'Handphone (IMEI)', 'Aksesoris & Casing', 'Charger & Kabel', 'Audio / TWS', 'Voucher & Pulsa'.",
+      "serialized_imei_modal": "When adding a Handphone, a dialog prompts to select the specific physical unit (IMEI, Color, Storage Capacity, Condition: Baru/Segel) from in-stock units. Prevents accidental duplicate IMEI sales.",
+      "cart_functionality": "Cart items show IMEI pill for phones, quantity stepper (+ / -) for accessories, subtotal, and customer name/phone field (for warranty).",
+      "checkout_modal": {
+        "payment_tabs": ["Tunai (Cash)", "QRIS"],
+        "cash_workflow": "Preset quick-cash buttons (Uang Pas, 50.000, 100.000, 200.000, 500.000, 1.000.000, 2.000.000), real-time calculation of 'Kembalian' (Change), validation that paid amount >= total.",
+        "qris_workflow": "Dynamic QRIS barcode generator preview with NMID / Merchant Name, payment status simulate check, 1-click 'Simulasi QRIS Berhasil'.",
+        "digital_receipt": "Receipt popup preview with store header, cashier name, date/time, customer info, itemized list with IMEI numbers, payment method, change, warranty terms ('Garansi Resmi / Toko 7 Hari'), and 'Cetak Struk (Print)' action using window.print() styling."
+      }
+    },
+    "2_product_and_stock_management": {
+      "product_types": [
+        {
+          "type": "HANDPHONE",
+          "description": "Serialized tracking. Each unit has unique IMEI (15 digits), Color (e.g. Midnight Black, Titanium Silver), Storage (e.g. 128GB, 256GB, 512GB), RAM, Status (Tersedia, Terjual, Retur)."
+        },
+        {
+          "type": "ACCESSORY",
+          "description": "Bulk quantity tracking (Stok minimum, Satuan pcs, Kategori aksesoris)."
+        }
+      ],
+      "actions": "Tambah Produk Baru, Tambah Stok IMEI Unit Handphone, Edit Harga Jual & Modal, Hapus/Arsipkan, Filter Stok Menipis (<5 pcs)."
+    },
+    "3_transaction_history": {
+      "features": "Filter tanggal (Hari Ini, 7 Hari Terakhir, Bulan Ini, Kustom), Filter Metode Pembayaran (Tunai / QRIS), Search No. Struk / Nama Pembeli / IMEI, Modal Detail Transaksi lengkap, Cetak Ulang Struk (Reprint Receipt)."
+    },
+    "4_sales_reports": {
+      "kpi_cards": [
+        "Total Omset Penjualan (Revenue)",
+        "Total Transaksi Selesai",
+        "Unit Handphone Terjual",
+        "Rata-rata Nilai Transaksi (AOV)"
+      ],
+      "visualizations": [
+        "Grafik Tren Penjualan Harian/Mingguan (Recharts Area/Bar Chart)",
+        "Proporsi Metode Pembayaran (Tunai vs QRIS Recharts Pie Chart)",
+        "Top 5 Produk Terlaris (Tabel ranking dengan revenue share)"
+      ]
+    }
+  },
+  "motion_and_interactions": {
+    "button_feedback": "active:scale-[0.98] transition-transform duration-100 ease-out",
+    "cart_item_insert": "animate-in fade-in slide-in-from-right-4 duration-200",
+    "receipt_pop": "animate-in zoom-in-95 duration-200",
+    "toast_notifications": "Sonner toasts on bottom-right for 'Produk ditambahkan ke keranjang', 'Transaksi Berhasil Disimpan', 'Stok Unit IMEI Berhasil Ditambahkan'"
+  },
+  "accessibility_and_contrast": {
+    "wcag_compliance": "All text tokens provide at least 4.5:1 contrast against their defined surface background.",
+    "numeric_inputs": "Large font-mono numbers for amount inputs with auto-formatted thousands separators (titik pemisah ribuan).",
+    "keyboard_shortcuts_support": "Enter to confirm payment, Esc to close dialogs, F2 for quick search focus."
+  },
+  "required_data_testids": [
+    "pos-search-input",
+    "pos-category-filter-all",
+    "pos-category-filter-handphone",
+    "pos-category-filter-accessories",
+    "pos-product-card",
+    "pos-add-to-cart-btn",
+    "pos-imei-select-dialog",
+    "pos-cart-panel",
+    "pos-cart-item",
+    "pos-cart-item-remove-btn",
+    "pos-cart-total-amount",
+    "pos-checkout-btn",
+    "checkout-payment-cash-tab",
+    "checkout-payment-qris-tab",
+    "checkout-cash-received-input",
+    "checkout-quick-cash-btn",
+    "checkout-change-amount",
+    "checkout-submit-btn",
+    "qris-simulate-success-btn",
+    "receipt-dialog",
+    "receipt-print-btn",
+    "receipt-close-btn",
+    "nav-pos-link",
+    "nav-products-link",
+    "nav-transactions-link",
+    "nav-reports-link",
+    "product-add-modal-btn",
+    "product-type-select",
+    "product-save-btn",
+    "imei-add-unit-btn",
+    "report-filter-date",
+    "transaction-detail-btn",
+    "transaction-reprint-btn"
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Light and Clean aesthetic (Terang & Bersih) as requested: use crisp white panels (#FFFFFF), soft slate background (#F8FAFC), subtle borders (#E2E8F0), and vivid brand accent (#0284C7).",
+    "Do NOT use dark gradients or heavy dark mode for POS main surfaces. Keep surfaces bright and highly legible for cashier speed.",
+    "All copy must be in natural, professional Bahasa Indonesia (e.g. Kasir, Keranjang, Bayar, Tunai, Kembalian, Struk Pembayaran, Stok Tersedia, No. IMEI, Garansi).",
+    "Prices must be formatted using Indonesian Rupiah format (e.g., Rp 3.499.000).",
+    "Ensure the digital receipt looks authentic: include Store Name ('KASIRKU CELL & ACCESSORIES'), Store Address & WhatsApp number, Cashier Name, Date/Time, Itemized lines with IMEI info, Subtotal, Payment details, and a clean dotted separator with a Print button that invokes window.print() or a cleanly styled printable view.",
+    "Ensure Handphone items strictly enforce serial number (IMEI) selection when adding to cart, while Accessories allow standard quantity +/- increments.",
+    "Include rich seed data: popular phone models (iPhone 15 Pro, Samsung Galaxy S24, Xiaomi Redmi Note 13, Oppo Reno 11) with realistic 15-digit IMEIs, and popular accessories (Anker 20W Fast Charger, Spigen Case, TWS Earphone, Tempered Glass, Sandisk MicroSD 128GB).",
+    "Include pre-installed recharts for daily sales bar/line charts and payment breakdown donut chart on the Laporan Penjualan page.",
+    "Add explicit data-testid attributes to all interactive and key elements as listed in required_data_testids."
+  ]
+}
