@@ -2,12 +2,28 @@ import uuid
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # "voucher" (pulsa/data) behaves like an accessory for stock, but carries two price tiers:
 # retail (sell_price) and wholesale (wholesale_price) picked per cart line at checkout.
 ProductType = Literal["handphone", "aksesoris", "voucher"]
 PriceTier = Literal["ritel", "grosir"]
+
+MONEY_FIELDS = ("cost_price", "sell_price", "wholesale_price", "stock_qty", "min_stock")
+
+
+def _coerce_rupiah(value):
+    """Accept 13500, "13500", "13.500", or 13500.0 — all mean the same rupiah amount.
+
+    A client sending a fractional number (e.g. a locale-formatted "13.500" parsed as
+    13.5) would otherwise be rejected as a non-integer, so round instead of failing.
+    """
+    if isinstance(value, str):
+        digits = "".join(ch for ch in value if ch.isdigit())
+        return int(digits) if digits else 0
+    if isinstance(value, float):
+        return int(round(value))
+    return value
 
 
 def _uuid() -> str:
@@ -54,6 +70,11 @@ class ProductCreate(BaseModel):
     stock_qty: int = 0
     min_stock: int = 5
 
+    @field_validator(*MONEY_FIELDS, mode="before")
+    @classmethod
+    def _rupiah(cls, value):
+        return _coerce_rupiah(value)
+
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
@@ -66,6 +87,11 @@ class ProductUpdate(BaseModel):
     stock_qty: Optional[int] = None
     min_stock: Optional[int] = None
     is_active: Optional[bool] = None
+
+    @field_validator(*MONEY_FIELDS, mode="before")
+    @classmethod
+    def _rupiah(cls, value):
+        return None if value is None else _coerce_rupiah(value)
 
 
 class ProductUnit(BaseModel):
@@ -89,3 +115,8 @@ class ProductUnitCreate(BaseModel):
     capacity: str = ""
     cost_price: int = 0
     sell_price: int = 0
+
+    @field_validator("cost_price", "sell_price", mode="before")
+    @classmethod
+    def _rupiah(cls, value):
+        return _coerce_rupiah(value)

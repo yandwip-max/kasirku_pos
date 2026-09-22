@@ -5,7 +5,7 @@ import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import type { Product, ProductPayload, ProductType, ProductUnit } from "@/lib/types";
-import { formatRupiah } from "@/lib/format";
+import { formatDateTime, formatRupiah, formatThousands, parseRupiah } from "@/lib/format";
 import AppShell from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,45 @@ const TYPE_FILTERS = [
   { id: "aksesoris", label: "Aksesoris", testid: "product-filter-type-aksesoris" },
   { id: "voucher", label: "Voucher Pulsa", testid: "product-filter-type-voucher" },
 ] as const;
+
+/** Money/quantity fields are digit-only text inputs: a native number input reads the
+ * Indonesian thousand separator ("13.500") as the decimal 13.5, which the backend
+ * rejects as a non-integer (422). Digits in, formatted display out. */
+function NumberField({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  testid,
+  hint,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (digits: string) => void;
+  placeholder?: string;
+  testid?: string;
+  hint?: string;
+}) {
+  const digits = value.replace(/\D/g, "");
+  return (
+    <div className="grid gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        value={digits ? formatThousands(Number(digits)) : ""}
+        onChange={(e) => onChange(String(parseRupiah(e.target.value)))}
+        placeholder={placeholder}
+        data-testid={testid}
+      />
+      {hint ? <p className="text-xs text-slate-500">{hint}</p> : null}
+    </div>
+  );
+}
 
 interface FormState {
   name: string;
@@ -111,17 +150,18 @@ function ProductFormDialog({
       toast.error("Nama produk wajib diisi");
       return;
     }
+    // parseRupiah keeps digits only, so every value below is a safe integer
     save.mutate({
       name: form.name.trim(),
       brand: form.brand.trim(),
       type: form.type,
       category: form.category,
       sku: form.sku.trim(),
-      cost_price: Number(form.cost_price) || 0,
-      sell_price: Number(form.sell_price) || 0,
-      wholesale_price: form.type === "voucher" ? Number(form.wholesale_price) || 0 : 0,
-      stock_qty: Number(form.stock_qty) || 0,
-      min_stock: Number(form.min_stock) || 5,
+      cost_price: parseRupiah(form.cost_price),
+      sell_price: parseRupiah(form.sell_price),
+      wholesale_price: form.type === "voucher" ? parseRupiah(form.wholesale_price) : 0,
+      stock_qty: form.type === "handphone" ? 0 : parseRupiah(form.stock_qty),
+      min_stock: parseRupiah(form.min_stock) || 5,
     });
   }
 
@@ -218,74 +258,54 @@ function ProductFormDialog({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="product-cost">Harga Modal (Rp)</Label>
-              <Input
-                id="product-cost"
-                type="number"
-                min={0}
-                value={form.cost_price}
-                onChange={(e) => set("cost_price", e.target.value)}
-                data-testid="product-cost-input"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="product-sell">
-                {form.type === "voucher" ? "Harga Jual Ritel (Rp)" : "Harga Jual (Rp)"}
-              </Label>
-              <Input
-                id="product-sell"
-                type="number"
-                min={0}
-                value={form.sell_price}
-                onChange={(e) => set("sell_price", e.target.value)}
-                data-testid="product-sell-input"
-              />
-            </div>
+            <NumberField
+              id="product-cost"
+              label="Harga Modal (Rp)"
+              value={form.cost_price}
+              onChange={(v) => set("cost_price", v)}
+              placeholder="0"
+              testid="product-cost-input"
+            />
+            <NumberField
+              id="product-sell"
+              label={form.type === "voucher" ? "Harga Jual Ritel (Rp)" : "Harga Jual (Rp)"}
+              value={form.sell_price}
+              onChange={(v) => set("sell_price", v)}
+              placeholder="0"
+              testid="product-sell-input"
+            />
           </div>
 
           {form.type === "voucher" && (
-            <div className="grid gap-2">
-              <Label htmlFor="product-wholesale">Harga Jual Grosir (Rp)</Label>
-              <Input
-                id="product-wholesale"
-                type="number"
-                min={0}
-                value={form.wholesale_price}
-                onChange={(e) => set("wholesale_price", e.target.value)}
-                placeholder="Kosongkan / 0 untuk ikut harga ritel"
-                data-testid="product-wholesale-input"
-              />
-              <p className="text-xs text-slate-500">
-                Kasir memilih <span className="font-medium">Ritel</span> atau{" "}
-                <span className="font-medium">Grosir</span> per item di keranjang saat transaksi.
-              </p>
-            </div>
+            <NumberField
+              id="product-wholesale"
+              label="Harga Jual Grosir (Rp)"
+              value={form.wholesale_price}
+              onChange={(v) => set("wholesale_price", v)}
+              placeholder="Kosongkan / 0 untuk ikut harga ritel"
+              testid="product-wholesale-input"
+              hint="Kasir memilih Ritel atau Grosir per item di keranjang saat transaksi."
+            />
           )}
 
           {(form.type === "aksesoris" || form.type === "voucher") && (
             <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-2">
-                <Label htmlFor="product-stock">Jumlah Stok</Label>
-                <Input
-                  id="product-stock"
-                  type="number"
-                  min={0}
-                  value={form.stock_qty}
-                  onChange={(e) => set("stock_qty", e.target.value)}
-                  data-testid="product-stock-input"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="product-min-stock">Batas Stok Menipis</Label>
-                <Input
-                  id="product-min-stock"
-                  type="number"
-                  min={0}
-                  value={form.min_stock}
-                  onChange={(e) => set("min_stock", e.target.value)}
-                />
-              </div>
+              <NumberField
+                id="product-stock"
+                label="Jumlah Stok"
+                value={form.stock_qty}
+                onChange={(v) => set("stock_qty", v)}
+                placeholder="0"
+                testid="product-stock-input"
+              />
+              <NumberField
+                id="product-min-stock"
+                label="Batas Stok Menipis"
+                value={form.min_stock}
+                onChange={(v) => set("min_stock", v)}
+                placeholder="5"
+                testid="product-min-stock-input"
+              />
             </div>
           )}
 
@@ -339,8 +359,8 @@ function UnitManagerDialog({
         imei: imei.trim(),
         color: color.trim(),
         capacity: capacity.trim(),
-        cost_price: Number(cost) || 0,
-        sell_price: Number(sell) || 0,
+        cost_price: parseRupiah(cost),
+        sell_price: parseRupiah(sell),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["units"] });
@@ -412,28 +432,22 @@ function UnitManagerDialog({
               data-testid="imei-capacity-input"
             />
           </div>
-          <div className="grid gap-1">
-            <Label htmlFor="unit-cost">Harga Modal (Rp)</Label>
-            <Input
-              id="unit-cost"
-              type="number"
-              min={0}
-              value={cost}
-              onChange={(e) => setCost(e.target.value)}
-              data-testid="imei-cost-input"
-            />
-          </div>
-          <div className="grid gap-1">
-            <Label htmlFor="unit-sell">Harga Jual (Rp)</Label>
-            <Input
-              id="unit-sell"
-              type="number"
-              min={0}
-              value={sell}
-              onChange={(e) => setSell(e.target.value)}
-              data-testid="imei-sell-input"
-            />
-          </div>
+          <NumberField
+            id="unit-cost"
+            label="Harga Modal (Rp)"
+            value={cost}
+            onChange={setCost}
+            placeholder="0"
+            testid="imei-cost-input"
+          />
+          <NumberField
+            id="unit-sell"
+            label="Harga Jual (Rp)"
+            value={sell}
+            onChange={setSell}
+            placeholder="0"
+            testid="imei-sell-input"
+          />
           <Button className="sm:col-span-2" onClick={submitUnit} disabled={addUnit.isPending} data-testid="imei-add-unit-btn">
             <Plus className="h-4 w-4" /> Tambah Unit
           </Button>

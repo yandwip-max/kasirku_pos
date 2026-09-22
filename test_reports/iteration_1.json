@@ -1,0 +1,74 @@
+{
+  "iteration": 1,
+  "summary": "Verified the voucher-pulsa thousand-separator price bug fix on /products. All 8 acceptance criteria exercised: 1 backend suite (2 tests) + 8 browser checks, all passed.",
+  "passed": 8,
+  "failed": 0,
+  "bugs": [],
+  "action_items": [],
+  "retest_needed": false,
+  "checks": [
+    {
+      "criterion": "PRIMARY REGRESSION — create Voucher Pulsa with Indonesian thousand-separator prices (13.500 / 16.000 / 14.000)",
+      "name": "voucher-create-with-thousand-separators",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "POST /api/products returned 201 with cost_price=13500, sell_price=16000, wholesale_price=14000, stock_qty=100. Success toast 'Produk berhasil ditambahkan' shown, dialog closed, table row shows 'Rp 16.000' and 'Grosir Rp 14.000'. Screenshot: voucher-create-with-thousand-separators-product-in-table.png"
+    },
+    {
+      "criterion": "PRIMARY REGRESSION (API evidence) — POST /api/products stores exact integers for voucher prices, and defensively coerces a raw fractional value instead of rejecting it",
+      "name": "test_tscheck_voucher_price_integer.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "test_create_voucher_product_with_integer_prices: POST /api/products {cost_price:13500,...} -> 201, body.cost_price==13500, sell_price==16000, wholesale_price==14000, confirmed via GET /api/products. test_create_product_with_fractional_price_is_coerced_not_rejected: POST with cost_price:13.5 -> 201 (not 422), value coerced to whole number. 2 passed in 1.35s"
+    },
+    {
+      "criterion": "Typing prices WITHOUT separators (plain digits) still works",
+      "name": "voucher-create-plain-digits",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Filled 13500/16000/14000 plain digits; POST /api/products -> 201 with matching integer values; success toast shown."
+    },
+    {
+      "criterion": "Money/stock inputs reject non-numeric characters and auto-format with thousand separators",
+      "name": "product-form-input-sanitization",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Typed 'a1b3c5.d0e0f-' into Harga Modal -> displayed '13.500'; 'x16abcxyz'->'16.000' style inputs on sell/wholesale fields all stripped non-digits and grouped with dots; stock field with '1oo' -> '1'."
+    },
+    {
+      "criterion": "Voucher-specific field visibility (Voucher shows Harga Jual Grosir + stock fields; Handphone hides all three; Aksesoris shows stock but not Grosir)",
+      "name": "product-form-field-visibility-by-type",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Aksesoris: wholesale input count=0, stock/min-stock visible. Voucher Pulsa: wholesale+stock+min-stock all visible. Handphone: wholesale/stock/min-stock count=0 (per-IMEI tracking)."
+    },
+    {
+      "criterion": "Regression — creating Aksesoris and Handphone products still works after the input change",
+      "name": "create-aksesoris-and-handphone-products",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Aksesoris POST -> 201 cost_price=50000/sell_price=75000, success toast. Handphone POST -> 201, success toast, table row shows '0 unit' stock (per-IMEI)."
+    },
+    {
+      "criterion": "Regression — editing an existing product's prices via edit dialog saves correctly",
+      "name": "edit-product-price-updates-correctly",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created fixture product (cost 10.000/sell 15.000), opened edit dialog: pre-filled values confirmed formatted '10.000'/'15.000'. Changed sell to 18.500, PUT/PATCH request returned 200 with sell_price=18500, toast 'Produk berhasil diperbarui', table shows 'Rp 18.500'."
+    },
+    {
+      "criterion": "Regression — adding an IMEI unit with harga modal & harga jual in 'Kelola Unit' dialog",
+      "name": "add-imei-unit-to-handphone",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created own fixture handphone product (cost 3.900.000/sell 4.650.000), opened Kelola Unit, cost/sell pre-filled '3.900.000'/'4.650.000', added new IMEI unit -> POST /units 201, unit row lists exact 'Rp 3.900.000' / 'Rp 4.650.000'."
+    },
+    {
+      "criterion": "Regression — new Voucher Pulsa product sellable at both price tiers in POS (Ritel/Grosir switch)",
+      "name": "pos-voucher-ritel-grosir-switch",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Own fixture voucher product (ritel 16.000/grosir 14.000) shown in POS catalog with wholesale sub-price; added to cart, default Ritel subtotal 'Rp 16.000'; switching tier to Grosir updated cart item subtotal and cart total to 'Rp 14.000'."
+    }
+  ]
+}

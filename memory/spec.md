@@ -25,6 +25,9 @@ Aplikasi kasir (POS) multi-toko untuk toko handphone & aksesoris. UI Bahasa Indo
 ## Urutan transaksi (penting)
 `POST /transactions` berjalan 3 tahap: (1) ambil & validasi produk/unit/stok, (2) **hitung harga, diskon, dan lunasi pembayaran** — tunai kurang → 400 di sini, (3) baru klaim stok/unit secara atomik dengan rollback kompensasi. Urutan ini wajib: sebelumnya validasi tunai terjadi setelah stok dipotong sehingga checkout gagal tetap menghabiskan stok & menandai IMEI terjual (bug, sudah diperbaiki).
 
+## Input angka (wajib diikuti)
+Semua field uang & stok di form (produk, unit IMEI) memakai **input teks digit-only** (`NumberField` di ProductsPage) dengan format ribuan otomatis, lalu dikirim sebagai bilangan bulat via `parseRupiah`. Jangan pakai `<Input type="number">` untuk rupiah: browser membaca pemisah ribuan Indonesia "13.500" sebagai desimal **13,5** sehingga Pydantic menolaknya (`int_from_float` → 422 "data tidak valid") — ini bug yang pernah terjadi pada form Voucher Pulsa. Sebagai lapis kedua, `ProductCreate`/`ProductUpdate`/`ProductUnitCreate` punya `field_validator` yang menerima int, float (dibulatkan), dan string berformat ("13.500" → 13500).
+
 ## Data Model (Mongo, db `app`)
 - `stores`: `id`, `name`, `address`, `phone`, `created_at`
 - `users`: `id`, `store_id`, `name`, `email` (unik global), `password_hash` (bcrypt), `role`, `is_active`, `created_at`
