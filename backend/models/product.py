@@ -15,12 +15,13 @@ def _now() -> datetime:
 
 class Product(BaseModel):
     id: str = Field(default_factory=_uuid)
+    store_id: str = ""
     name: str
     brand: str = ""
     type: Literal["handphone", "aksesoris"] = "aksesoris"
     category: str = "Lainnya"
     sku: str = ""
-    cost_price: int = 0
+    cost_price: Optional[int] = 0  # None when masked for Kasir
     sell_price: int = 0
     # accessories only — handphone stock is the count of in_stock units
     stock_qty: int = 0
@@ -61,11 +62,12 @@ class ProductUpdate(BaseModel):
 
 class ProductUnit(BaseModel):
     id: str = Field(default_factory=_uuid)
+    store_id: str = ""
     product_id: str
     imei: str
     color: str = ""
     capacity: str = ""
-    cost_price: int = 0  # per-unit purchase price; 0 = fall back to the product price
+    cost_price: Optional[int] = 0  # per-unit purchase price; 0 = fall back to the product price
     sell_price: int = 0  # per-unit selling price; 0 = fall back to the product price
     status: Literal["in_stock", "sold"] = "in_stock"
     created_at: datetime = Field(default_factory=_now)

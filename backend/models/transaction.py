@@ -25,7 +25,10 @@ class CheckoutIn(BaseModel):
     amount_paid: Optional[int] = None  # tunai only; QRIS always settles at total
     customer_name: str = ""
     customer_phone: str = ""
-    cashier_name: str = "Kasir"
+    # Offline support: the PWA stamps a client-generated ref + the moment of sale so a
+    # queued transaction replays exactly once and keeps its real timestamp.
+    client_ref: Optional[str] = None
+    offline_created_at: Optional[datetime] = None
 
 
 class TransactionItemOut(BaseModel):
@@ -37,18 +40,22 @@ class TransactionItemOut(BaseModel):
     capacity: Optional[str] = None
     qty: int
     price: int
+    cost: Optional[int] = 0  # harga modal snapshot; None when masked for Kasir
     subtotal: int
 
 
 class Transaction(BaseModel):
     id: str = Field(default_factory=_uuid)
+    store_id: str = ""
     transaction_number: str
     items: list[TransactionItemOut]
     total: int
+    profit: Optional[int] = 0  # None when masked for Kasir
     payment_method: str
     amount_paid: int
     change_amount: int
     customer_name: str = ""
     customer_phone: str = ""
     cashier_name: str = "Kasir"
+    client_ref: Optional[str] = None
     created_at: datetime = Field(default_factory=_now)

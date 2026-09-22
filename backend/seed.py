@@ -1,4 +1,9 @@
-"""Seed data for KasirKu POS. Run: cd /app/backend && python seed.py"""
+"""Seed data for KasirKu POS. Run: cd /app/backend && python seed.py
+
+Creates ONE demo store with a Pemilik + Kasir account and fills it with catalogue and
+sales history. Stores registered through /api/auth/register start empty and never see
+this data — isolation is by `store_id`.
+"""
 
 import math
 import random
@@ -6,11 +11,17 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from lib.auth import hash_password
 from lib.db import db, ensure_indexes
 
 WIB = ZoneInfo("Asia/Jakarta")
 NOW = datetime.now(timezone.utc)
 random.seed(42)
+
+DEMO_STORE_NAME = "KasirKu Cell & Accessories (Toko Demo)"
+DEMO_PASSWORD = "demo1234"
+DEMO_OWNER_EMAIL = "pemilik@demo.id"
+DEMO_CASHIER_EMAIL = "kasir@demo.id"
 
 
 def uid() -> str:
@@ -68,15 +79,52 @@ CUSTOMERS = ["", "", "Budi Santoso", "Sari Wulandari", "Andi Pratama", "Rina Mau
 
 
 async def seed() -> None:
-    if await db.products.count_documents({}) > 0:
-        print("Seed skipped: products already exist.")
+    if await db.stores.find_one({"name": DEMO_STORE_NAME}):
+        print("Seed skipped: demo store already exists.")
         return
+
+    store_id = uid()
+    await db.stores.insert_one(
+        {
+            "id": store_id,
+            "name": DEMO_STORE_NAME,
+            "address": "Jl. Merdeka Raya No. 12, Jakarta Pusat",
+            "phone": "0812-3456-7890",
+            "created_at": NOW - timedelta(days=14),
+        }
+    )
+    owner_hash = hash_password(DEMO_PASSWORD)
+    await db.users.insert_many(
+        [
+            {
+                "id": uid(),
+                "store_id": store_id,
+                "name": "Pak Pemilik",
+                "email": DEMO_OWNER_EMAIL,
+                "password_hash": owner_hash,
+                "role": "pemilik",
+                "is_active": True,
+                "created_at": NOW - timedelta(days=14),
+            },
+            {
+                "id": uid(),
+                "store_id": store_id,
+                "name": "Kasir Pagi",
+                "email": DEMO_CASHIER_EMAIL,
+                "password_hash": owner_hash,
+                "role": "kasir",
+                "is_active": True,
+                "created_at": NOW - timedelta(days=13),
+            },
+        ]
+    )
 
     products_docs: dict[str, dict] = {}
     product_ids: list[str] = []
     for p in PHONES:
         doc = {
             "id": uid(),
+            "store_id": store_id,
             "name": p["name"],
             "brand": p["brand"],
             "type": "handphone",
@@ -97,6 +145,7 @@ async def seed() -> None:
     for name, brand, sku, cat, cost, sell, qty in ACCESSORIES:
         doc = {
             "id": uid(),
+            "store_id": store_id,
             "name": name,
             "brand": brand,
             "type": "aksesoris",
@@ -124,6 +173,7 @@ async def seed() -> None:
                 units.append(
                     {
                         "id": uid(),
+                        "store_id": store_id,
                         "product_id": pid,
                         "imei": str(imei_counter),
                         "color": color,
@@ -159,20 +209,21 @@ async def seed() -> None:
                     # never oversell: cap the line at the remaining stock
                     remaining = acc["stock_qty"] - sold_acc_qty.get(acc["id"], 0)
                     qty = min(random.choice([1, 1, 2]), remaining)
-                items.append(
-                    {
-                        "product_id": acc["id"],
-                        "product_name": acc["name"],
-                        "unit_id": None,
-                        "imei": None,
-                        "color": None,
-                        "capacity": None,
-                        "qty": qty,
-                        "price": acc["sell_price"],
-                        "subtotal": acc["sell_price"] * qty,
-                    }
-                )
-                sold_acc_qty[acc["id"]] = sold_acc_qty.get(acc["id"], 0) + qty
+                    items.append(
+                        {
+                            "product_id": acc["id"],
+                            "product_name": acc["name"],
+                            "unit_id": None,
+                            "imei": None,
+                            "color": None,
+                            "capacity": None,
+                            "qty": qty,
+                            "price": acc["sell_price"],
+                            "cost": acc["cost_price"],
+                            "subtotal": acc["sell_price"] * qty,
+                        }
+                    )
+                    sold_acc_qty[acc["id"]] = sold_acc_qty.get(acc["id"], 0) + qty
             if random.random() < 0.45:
                 pid = random.choice(product_ids)
                 available = [u for u in units_by_product[pid] if u["status"] == "in_stock"]
@@ -192,21 +243,24 @@ async def seed() -> None:
                             "capacity": unit["capacity"],
                             "qty": 1,
                             "price": product["sell_price"],
+                            "cost": product["cost_price"],
                             "subtotal": product["sell_price"],
                         }
                     )
+            if not items:
+                continue
             total = sum(i["subtotal"] for i in items)
+            profit = sum(i["subtotal"] - i["cost"] * i["qty"] for i in items)
             payment_method = random.choice(["tunai", "tunai", "qris"])
-            if payment_method == "tunai":
-                paid = math.ceil(total / 50000) * 50000
-            else:
-                paid = total
+            paid = math.ceil(total / 50000) * 50000 if payment_method == "tunai" else total
             txs.append(
                 {
                     "id": trx_id,
+                    "store_id": store_id,
                     "transaction_number": f"TRX-{key}-{day_counts[key]:04d}",
                     "items": items,
                     "total": total,
+                    "profit": profit,
                     "payment_method": payment_method,
                     "amount_paid": paid,
                     "change_amount": paid - total,
@@ -234,7 +288,9 @@ async def seed() -> None:
             await db.products.update_one({"id": acc["id"]}, {"$inc": {"stock_qty": -sold}})
 
     await ensure_indexes()
-    print(f"Seeded {len(product_ids)} handphone, {len(acc_docs)} aksesoris, {len(txs)} transaksi.")
+    print(f"Seeded demo store: {len(product_ids)} handphone, {len(acc_docs)} aksesoris, {len(txs)} transaksi.")
+    print(f"  Pemilik: {DEMO_OWNER_EMAIL} / {DEMO_PASSWORD}")
+    print(f"  Kasir  : {DEMO_CASHIER_EMAIL} / {DEMO_PASSWORD}")
 
 
 if __name__ == "__main__":

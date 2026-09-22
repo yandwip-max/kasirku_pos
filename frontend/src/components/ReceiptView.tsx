@@ -1,11 +1,6 @@
 import type { Transaction } from "@/lib/types";
 import { formatDateTime, formatRupiah } from "@/lib/format";
-
-export const STORE_INFO = {
-  name: "KASIRKU CELL & ACCESSORIES",
-  address: "Jl. Merdeka Raya No. 12, Jakarta Pusat",
-  phone: "WA 0812-3456-7890",
-};
+import { useAuth } from "@/lib/auth";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -22,6 +17,7 @@ function Dotted() {
 
 /** Thermal-style receipt. The wrapper id is targeted by the @media print rules in index.css. */
 export default function ReceiptView({ transaction }: { transaction: Transaction }) {
+  const { store } = useAuth();
   const t = transaction;
   return (
     <div
@@ -29,9 +25,9 @@ export default function ReceiptView({ transaction }: { transaction: Transaction 
       className="mx-auto w-full max-w-[320px] bg-white px-3 py-4 font-mono text-[11px] leading-relaxed text-slate-800"
     >
       <div className="text-center">
-        <p className="text-xs font-bold tracking-wide">{STORE_INFO.name}</p>
-        <p className="text-[10px] text-slate-500">{STORE_INFO.address}</p>
-        <p className="text-[10px] text-slate-500">{STORE_INFO.phone}</p>
+        <p className="text-xs font-bold uppercase tracking-wide">{store?.name ?? "KASIRKU"}</p>
+        {store?.address ? <p className="text-[10px] text-slate-500">{store.address}</p> : null}
+        {store?.phone ? <p className="text-[10px] text-slate-500">WA {store.phone}</p> : null}
       </div>
       <Dotted />
       <Row label="No. Struk" value={t.transaction_number} />

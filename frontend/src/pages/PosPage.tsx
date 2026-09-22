@@ -2,8 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search } from "lucide-react";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, OfflineError } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
+import { useAuth } from "@/lib/auth";
+import { linePrice, cartTotal } from "@/lib/cart";
+import { enqueueSale, newClientRef, pendingLinesFromCart } from "@/lib/offlineQueue";
 import type { CartLine, CheckoutPayload, Product, ProductUnit, Transaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import ProductGrid from "@/components/pos/ProductGrid";
@@ -24,7 +27,40 @@ type CategoryId = (typeof CATEGORIES)[number]["id"];
 const sameLine = (a: CartLine, b: CartLine) =>
   (a.unit?.id ?? `acc-${a.product.id}`) === (b.unit?.id ?? `acc-${b.product.id}`);
 
+/** Receipt shown for a sale stored on the device: it has no server transaction number yet. */
+function offlineReceipt(cart: CartLine[], payload: CheckoutPayload, cashierName: string, storeId: string): Transaction {
+  const total = cartTotal(cart);
+  return {
+    id: payload.client_ref ?? newClientRef(),
+    store_id: storeId,
+    transaction_number: "OFFLINE — menunggu sinkronisasi",
+    items: cart.map((line) => ({
+      product_id: line.product.id,
+      product_name: line.product.name,
+      unit_id: line.unit?.id ?? null,
+      imei: line.unit?.imei ?? null,
+      color: line.unit?.color ?? null,
+      capacity: line.unit?.capacity ?? null,
+      qty: line.qty,
+      price: linePrice(line),
+      cost: null,
+      subtotal: linePrice(line) * line.qty,
+    })),
+    total,
+    profit: null,
+    payment_method: payload.payment_method,
+    amount_paid: payload.amount_paid ?? total,
+    change_amount: (payload.amount_paid ?? total) - total,
+    customer_name: payload.customer_name,
+    customer_phone: payload.customer_phone,
+    cashier_name: cashierName,
+    client_ref: payload.client_ref ?? null,
+    created_at: payload.offline_created_at ?? new Date().toISOString(),
+  };
+}
+
 export default function PosPage() {
+  const { user, store } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<CategoryId>("all");
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -32,6 +68,7 @@ export default function PosPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [customer, setCustomer] = useState({ name: "", phone: "" });
   const [receipt, setReceipt] = useState<Transaction | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -100,20 +137,58 @@ export default function PosPage() {
     toast.success(`${product.name} (IMEI ${unit.imei}) ditambahkan ke keranjang`);
   }
 
-  const checkout = useMutation({
-    mutationFn: (payload: CheckoutPayload) => apiPost<Transaction>("/transactions", payload),
-    onSuccess: (trx) => {
-      setReceipt(trx);
-      setCheckoutOpen(false);
-      setCart([]);
+  function finishSale(trx: Transaction) {
+    setReceipt(trx);
+    setCheckoutOpen(false);
+    setCart([]);
+  }
+
+  /** Online: POST straight away. Offline: queue in IndexedDB and print a local receipt. */
+  async function confirmCheckout(method: "tunai" | "qris", amountPaid: number | null) {
+    if (cart.length === 0) return;
+    const clientRef = newClientRef();
+    const payload: CheckoutPayload = {
+      items: cart.map((l) => ({ product_id: l.product.id, unit_id: l.unit?.id ?? null, qty: l.qty })),
+      payment_method: method,
+      amount_paid: amountPaid,
+      customer_name: customer.name,
+      customer_phone: customer.phone,
+      client_ref: clientRef,
+      offline_created_at: new Date().toISOString(),
+    };
+
+    setSubmitting(true);
+    try {
+      if (!navigator.onLine) throw new OfflineError();
+      const trx = await apiPost<Transaction>("/transactions", payload);
+      finishSale(trx);
       queryClient.invalidateQueries({ queryKey: ["products"] });
       queryClient.invalidateQueries({ queryKey: ["units"] });
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({ queryKey: ["reports"] });
       toast.success("Transaksi berhasil disimpan");
-    },
-    onError: (err) => toast.error(apiErrorMessage(err, "Gagal menyimpan transaksi")),
-  });
+    } catch (err) {
+      if (err instanceof OfflineError) {
+        await enqueueSale({
+          client_ref: clientRef,
+          store_id: store?.id ?? "",
+          payload,
+          total: cartTotal(cart),
+          item_count: cart.reduce((sum, l) => sum + l.qty, 0),
+          lines: pendingLinesFromCart(cart, linePrice),
+          created_at: payload.offline_created_at ?? new Date().toISOString(),
+        });
+        finishSale(offlineReceipt(cart, payload, user?.name ?? "Kasir", store?.id ?? ""));
+        toast.success("Tersimpan offline — akan terkirim otomatis saat internet kembali");
+      } else {
+        toast.error(apiErrorMessage(err, "Gagal menyimpan transaksi"));
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const checkoutBusy = submitting;
 
   return (
     <AppShell>
@@ -192,17 +267,8 @@ export default function PosPage() {
         onOpenChange={setCheckoutOpen}
         cart={cart}
         customer={customer}
-        submitting={checkout.isPending}
-        onConfirm={(method, amountPaid) =>
-          checkout.mutate({
-            items: cart.map((l) => ({ product_id: l.product.id, unit_id: l.unit?.id ?? null, qty: l.qty })),
-            payment_method: method,
-            amount_paid: amountPaid,
-            customer_name: customer.name,
-            customer_phone: customer.phone,
-            cashier_name: "Kasir Pagi",
-          })
-        }
+        submitting={checkoutBusy}
+        onConfirm={(method, amountPaid) => void confirmCheckout(method, amountPaid)}
       />
       <ReceiptDialog transaction={receipt} open={receipt !== null} onOpenChange={(open) => !open && setReceipt(null)} />
     </AppShell>

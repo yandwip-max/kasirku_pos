@@ -18,6 +18,7 @@ load_dotenv(ROOT_DIR / '.env')
 # MongoDB connection
 from lib.db import client, db, ensure_indexes
 
+from routers.auth import router as auth_router
 from routers.products import router as products_router
 from routers.transactions import router as transactions_router
 from routers.reports import router as reports_router
@@ -65,6 +66,7 @@ async def get_status_checks():
     return [StatusCheck(**status_check) for status_check in status_checks]
 
 # Feature routers — each module exports its own APIRouter with a resource prefix
+api_router.include_router(auth_router)
 api_router.include_router(products_router)
 api_router.include_router(transactions_router)
 api_router.include_router(reports_router)

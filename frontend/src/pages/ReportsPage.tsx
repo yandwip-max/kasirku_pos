@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Receipt, Smartphone, TrendingUp } from "lucide-react";
+import { BarChart3, Coins, Receipt, Smartphone, TrendingUp } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { apiGet } from "@/lib/api";
 import type { ReportSummary } from "@/lib/types";
@@ -71,11 +71,22 @@ export default function ReportsPage() {
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
           <KpiCard
             icon={<TrendingUp className="h-4 w-4" />}
             label="Omset Penjualan"
             value={summary ? formatRupiah(summary.total_revenue) : null}
+          />
+          <KpiCard
+            icon={<Coins className="h-4 w-4" />}
+            label="Total Keuntungan"
+            value={
+              summary ? (
+                <span className="text-emerald-600" data-testid="report-total-profit">
+                  {formatRupiah(summary.total_profit)}
+                </span>
+              ) : null
+            }
           />
           <KpiCard
             icon={<Receipt className="h-4 w-4" />}
