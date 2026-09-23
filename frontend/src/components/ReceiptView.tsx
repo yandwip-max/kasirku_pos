@@ -15,8 +15,9 @@ function Dotted() {
   return <div className="my-2 border-t border-dashed border-slate-300" />;
 }
 
-/** Thermal-style receipt. The wrapper id is targeted by the @media print rules in index.css. */
-export default function ReceiptView({ transaction }: { transaction: Transaction }) {
+/** Thermal-style receipt. The wrapper id is targeted by the @media print rules in index.css.
+ * `compact` tightens the layout for 58 mm portable/bluetooth printers. */
+export default function ReceiptView({ transaction, compact = false }: { transaction: Transaction; compact?: boolean }) {
   const { store } = useAuth();
   const t = transaction;
   const discountTotal = t.discount_total ?? 0;
@@ -25,7 +26,11 @@ export default function ReceiptView({ transaction }: { transaction: Transaction 
   return (
     <div
       id="receipt-print-area"
-      className="mx-auto w-full max-w-[320px] bg-white px-3 py-4 font-mono text-[11px] leading-relaxed text-slate-800"
+      className={
+        compact
+          ? "mx-auto w-full max-w-[220px] bg-white px-2 py-3 font-mono text-[9px] leading-snug text-slate-800"
+          : "mx-auto w-full max-w-[320px] bg-white px-3 py-4 font-mono text-[11px] leading-relaxed text-slate-800"
+      }
     >
       <div className="text-center">
         <p className="text-xs font-bold uppercase tracking-wide">{store?.name ?? "KASIRKU"}</p>

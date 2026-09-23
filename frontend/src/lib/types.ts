@@ -243,3 +243,31 @@ export interface CheckoutPayload {
   client_ref?: string;
   offline_created_at?: string;
 }
+/* ── Riwayat Aktivitas (audit trail) — mirrors backend/models/audit.py ── */
+
+export type ActivityCategory = "harga" | "stok" | "produk" | "akun" | "toko";
+
+export interface ActivityChange {
+  field: string;
+  before: string;
+  after: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  at: string;
+  actor_name: string;
+  actor_role: Role;
+  action: string;
+  category: ActivityCategory;
+  entity_name: string;
+  summary: string;
+  changes: ActivityChange[];
+}
+
+export interface ActivityPage {
+  rows: ActivityLog[];
+  total: number;
+  has_more: boolean;
+  next_skip: number | null;
+}

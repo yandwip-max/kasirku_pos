@@ -135,7 +135,9 @@
     }
 }
 
-/* Thermal-receipt printing: only the receipt surface is visible on paper. */
+/* Thermal-receipt printing: only the receipt surface is visible on paper.
+   The paper box (@page) is injected by src/lib/printer.ts; body[data-paper] carries
+   the chosen width so 58 mm portable printers get a narrower, tighter receipt. */
 @media print {
     body * {
         visibility: hidden !important;
@@ -154,5 +156,18 @@
         padding: 12px 4px !important;
         box-shadow: none !important;
         border: none !important;
+    }
+    body[data-paper="58"] #receipt-print-area {
+        max-width: 56mm !important;
+        padding: 4px 2mm !important;
+        font-size: 9px !important;
+        line-height: 1.25 !important;
+    }
+    body[data-paper="80"] #receipt-print-area {
+        max-width: 76mm !important;
+        padding: 6px 3mm !important;
+    }
+    body[data-paper="a4"] #receipt-print-area {
+        max-width: 100mm !important;
     }
 }

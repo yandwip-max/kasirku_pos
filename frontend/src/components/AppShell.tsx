@@ -8,6 +8,7 @@ import {
   LogOut,
   Package,
   RefreshCw,
+  ScrollText,
   ShoppingCart,
   Store,
   Users,
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { to: "/reports/daily", label: "Laporan Harian", icon: CalendarDays, testid: "nav-daily-report-link", action: "report:read" },
   { to: "/reports", label: "Ringkasan", icon: BarChart3, testid: "nav-reports-link", action: "report:read" },
   { to: "/users", label: "Pengguna", icon: Users, testid: "nav-users-link", action: "user:manage" },
+  { to: "/activity", label: "Aktivitas", icon: ScrollText, testid: "nav-activity-link", action: "user:manage" },
 ];
 
 function navClassName({ isActive }: { isActive: boolean }) {

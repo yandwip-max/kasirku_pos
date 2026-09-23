@@ -4,6 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pymongo import DESCENDING, ReturnDocument
 
+from lib.audit import category_for, diff_changes, log_activity
 from lib.auth import Principal, can, mask_cost, require
 from lib.scoped import ScopedRepo, scoped_repo
 from models.product import (
@@ -92,6 +93,13 @@ async def create_product(
         input.stock_qty = 0  # stock is tracked as serialized units
     doc = Product(**input.model_dump(), store_id=principal.store_id)
     await repo.insert_one("products", doc.model_dump(exclude={"store_id"}))
+    await log_activity(
+        principal,
+        "product:create",
+        summary=f"Menambah produk baru ({doc.type})",
+        entity_name=doc.name,
+        category="produk",
+    )
     return doc
 
 
@@ -107,11 +115,22 @@ async def update_product(
         raise HTTPException(status_code=400, detail="Tidak ada perubahan")
     updates.pop("type", None)  # type is immutable once created
     updates.pop("store_id", None)  # never reassign a product to another store
+    before = await repo.find_one("products", {"id": product_id})
     res = await repo.find_one_and_update(
         "products", {"id": product_id}, {"$set": updates}, return_document=ReturnDocument.AFTER
     )
     if not res:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
+    changes = diff_changes(before or {}, res, updates.keys())
+    if changes:
+        await log_activity(
+            principal,
+            "product:update",
+            summary="Mengubah data produk",
+            entity_name=res.get("name", ""),
+            changes=changes,
+            category=category_for("product:update", updates.keys()),
+        )
     return Product(**{**res, "created_at": _aware(res.get("created_at"))})
 
 
@@ -121,10 +140,18 @@ async def delete_product(
     principal: Principal = Depends(require("product:write")),
     repo: ScopedRepo = Depends(scoped_repo),
 ):
+    before = await repo.find_one("products", {"id": product_id})
     res = await repo.delete_one("products", {"id": product_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
     await repo.delete_many("product_units", {"product_id": product_id})
+    await log_activity(
+        principal,
+        "product:delete",
+        summary="Menghapus produk beserta unit stoknya",
+        entity_name=(before or {}).get("name", ""),
+        category="produk",
+    )
 
 
 @router.get("/{product_id}/units", response_model=List[ProductUnit])
@@ -171,6 +198,14 @@ async def add_unit(
         sell_price=input.sell_price,
     )
     await repo.insert_one("product_units", unit.model_dump(exclude={"store_id"}))
+    await log_activity(
+        principal,
+        "unit:add",
+        summary=f"Stok masuk 1 unit IMEI {imei}",
+        entity_name=product.get("name", ""),
+        changes=diff_changes({}, unit.model_dump(), ["cost_price", "sell_price", "color", "capacity"]),
+        category="stok",
+    )
     return unit
 
 
@@ -187,3 +222,11 @@ async def delete_unit(
     if unit["status"] != "in_stock":
         raise HTTPException(status_code=409, detail="Unit sudah terjual, tidak bisa dihapus")
     await repo.delete_one("product_units", {"id": unit_id})
+    product = await repo.find_one("products", {"id": product_id})
+    await log_activity(
+        principal,
+        "unit:delete",
+        summary=f"Menghapus unit stok IMEI {unit.get('imei', '')}",
+        entity_name=(product or {}).get("name", ""),
+        category="stok",
+    )

@@ -7,6 +7,7 @@ import TransactionsPage from "@/pages/TransactionsPage";
 import DailyReportPage from "@/pages/DailyReportPage";
 import ReportsPage from "@/pages/ReportsPage";
 import UsersPage from "@/pages/UsersPage";
+import ActivityLogPage from "@/pages/ActivityLogPage";
 
 // One <Route> per page in src/pages; BrowserRouter already wraps this in main.tsx.
 // Pemilik-only screens are wrapped in RequirePermission — the backend enforces the
@@ -61,6 +62,15 @@ export default function App() {
         element={
           <RequirePermission action="user:manage">
             <UsersPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="/activity"
+        element={
+          <RequirePermission action="user:manage">
+            <ActivityLogPage />
           </RequirePermission>
         }
       />

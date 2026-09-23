@@ -13,6 +13,7 @@ from lib.auth import (
     require,
     verify_password,
 )
+from lib.audit import diff_changes, log_activity
 from lib.db import db
 from models.auth import (
     CreateUserIn,
@@ -125,6 +126,13 @@ async def create_user(input: CreateUserIn, principal: Principal = Depends(requir
         role=input.role,
     )
     await db.users.insert_one(user.model_dump())
+    await log_activity(
+        principal,
+        "user:create",
+        summary=f"Menambah pengguna baru dengan peran {user.role.capitalize()}",
+        entity_name=user.email,
+        category="akun",
+    )
     return _user_out(user.model_dump())
 
 
@@ -139,6 +147,13 @@ async def update_user(user_id: str, input: UpdateUserIn, principal: Principal = 
     if not user:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
     await db.users.update_one({"id": user_id, "store_id": principal.store_id}, {"$set": {"name": name}})
+    await log_activity(
+        principal,
+        "user:rename",
+        summary=f"Mengubah nama pengguna dari \"{user.get('name', '')}\" menjadi \"{name}\"",
+        entity_name=user.get("email", ""),
+        category="akun",
+    )
     return _user_out({**user, "name": name})
 
 
@@ -154,6 +169,13 @@ async def reset_password(
     await db.users.update_one(
         {"id": user_id, "store_id": principal.store_id},
         {"$set": {"password_hash": hash_password(input.password)}},
+    )
+    await log_activity(
+        principal,
+        "user:password",
+        summary=f"Mengatur ulang password akun {user.get('name', '')}",
+        entity_name=user.get("email", ""),
+        category="akun",
     )
     return _user_out(user)
 
@@ -172,6 +194,13 @@ async def update_store(input: StoreUpdateIn, principal: Principal = Depends(requ
     )
     if not store:
         raise HTTPException(status_code=404, detail="Data toko tidak ditemukan")
+    await log_activity(
+        principal,
+        "store:update",
+        summary="Memperbarui profil toko (tercetak di struk)",
+        entity_name=updates["name"],
+        category="toko",
+    )
     return _store_out(store)
 
 
@@ -185,4 +214,11 @@ async def deactivate_user(user_id: str, principal: Principal = Depends(require("
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
     target_active = not user.get("is_active", True)
     await db.users.update_one({"id": user_id, "store_id": principal.store_id}, {"$set": {"is_active": target_active}})
+    await log_activity(
+        principal,
+        "user:status",
+        summary=f"{'Mengaktifkan' if target_active else 'Menonaktifkan'} akun {user.get('name', '')}",
+        entity_name=user.get("email", ""),
+        category="akun",
+    )
     return _user_out({**user, "is_active": target_active})

@@ -71,3 +71,13 @@ Laporan (pemilik): `GET /reports/summary?days=`, **`GET /reports/daily?days=7|14
 - **Profil Toko** — kartu `store-profile-card` + dialog edit (`PATCH /api/auth/store`): nama, alamat, no. WhatsApp. Ketiganya tercetak di kepala struk (`ReceiptView.tsx`).
 - **Atur Ulang Password** — tombol "Password" per baris pengguna (`PATCH /api/auth/users/{user_id}/password`). Password lama tidak diperlukan; min. 6 karakter, harus sama dengan konfirmasi. Scoped `store_id` (pengguna toko lain → 404).
 - **Notifikasi Stok Menipis** — `LowStockAlert` di halaman Kasir (POS) membandingkan `stock_qty` vs `min_stock` untuk aksesoris & voucher.
+
+## Riwayat Aktivitas (audit trail) — halaman /activity, khusus Pemilik
+- Koleksi `activity_logs`: {id, store_id, at, actor_id, actor_name, actor_role, action, category, entity_name, summary, changes[{field,before,after}]}.
+- Kategori: `harga`, `stok`, `produk`, `akun` (buat/rename/reset password/aktif-nonaktif), `toko`.
+- Dicatat di: products (create/update/delete, tambah & hapus unit IMEI) dan auth (create user, rename, reset password, aktif/nonaktif, edit profil toko) lewat `lib/audit.py::log_activity` (gagal menulis log tidak pernah menggagalkan aksi).
+- `GET /api/activity?period=today|7d|30d|all&category=&q=&skip=&limit=` (izin `user:manage`; Kasir → 403).
+
+## Cetak Struk — ukuran kertas printer
+- Dialog struk punya pemilih **58 mm / 80 mm / A4** (`src/lib/printer.ts`, tersimpan di localStorage `kasirku.paper-size`).
+- Pilihan menulis `body[data-paper]` + menyuntik `@page { size: 58mm auto; margin: 0 }`; aturan cetak per ukuran ada di `src/index.css`. 58 mm = printer portable/bluetooth (font & padding lebih rapat, `ReceiptView compact`).
