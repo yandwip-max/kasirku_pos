@@ -109,3 +109,10 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 ## Modal / HPP di laporan
 - `ReportSummary.total_cogs` dan `DailyRow.cogs` + `DailyReport.total_cogs` (backend/models/report.py) dihitung dari snapshot `item.cost * qty` pada tiap transaksi (mengabaikan transaksi void), jadi `revenue - cogs == profit` selalu konsisten.
 - UI: KPI "Modal / HPP" di /reports dan /reports/daily (+ kolom "Modal (HPP)" per hari). Kasir tetap 403 untuk semua laporan.
+
+## Laporan/Backup Mingguan Otomatis via Email
+- Cron platform: `.emergent/crons.yml` → `weekly-report`, `cron: "0 20 * * 0"`, `timezone: Asia/Jakarta` (Minggu 20.00 WIB) → `POST {{BASE_URL}}/api/cron/weekly-report`.
+- Endpoint (`backend/routers/cron.py`) hanya autentikasi `Authorization: Bearer $WEBHOOK_CRON_SECRET` (compare_digest), catat `run_id` di koleksi `cron_runs` untuk idempotensi (duplikat → `{"status":"duplicate"}`), lalu kerja dijalankan lewat BackgroundTasks.
+- Pekerjaan: untuk SETIAP akun `role=pemilik` yang aktif, kirim email berisi ringkasan 7 hari toko-nya (omzet, HPP, laba, transaksi, item, HP terjual, void/retur, stok menipis, 3 produk terlaris) + pengingat unduh cadangan. Jadi toko baru yang mendaftar otomatis ikut menerima.
+- Email dikirim via Emergent managed Resend (`backend/lib/email.py`): `EMERGENT_EMAIL_KEY`, `EMAIL_FROM_NAME="KasirKu POS"`, gate `_assert_safe_email` dipanggil di setiap pengiriman. Provider tidak mendukung lampiran, jadi email berisi ringkasan saja (sesuai permintaan user).
+- Catatan: email `pemilik@demo.id` (data demo) ditolak provider sebagai "undeliverable recipient" — normal untuk domain palsu. Akun dengan email asli akan terkirim (diverifikasi via `delivered@resend.dev`, email_id kembali).

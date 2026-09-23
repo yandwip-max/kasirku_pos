@@ -1,0 +1,9 @@
+crons:
+  - name: weekly-report
+    description: "Kirim ringkasan & pengingat cadangan data mingguan ke email Pemilik tiap Minggu 20.00 WIB"
+    cron: "0 20 * * 0"
+    timezone: "Asia/Jakarta"
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    endpoint: "{{BASE_URL}}/api/cron/weekly-report"
+    method: POST
+    enabled: true

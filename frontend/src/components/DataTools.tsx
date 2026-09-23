@@ -170,8 +170,7 @@ export function BackupCard() {
         </div>
 
         <div className="grid gap-2 sm:grid-cols-2">
-          {BACKUPS.map((item) => (
-            <Button
+          {BACKUPS.map((item) => (            <Button
               key={item.path}
               variant="outline"
               disabled={busy !== null}
@@ -190,6 +189,12 @@ export function BackupCard() {
             </Button>
           ))}
         </div>
+
+        <p className="rounded-lg border border-sky-100 bg-sky-50/60 p-2.5 text-[11px] leading-snug text-sky-900" data-testid="backup-weekly-email-note">
+          <strong>Laporan mingguan otomatis:</strong> setiap Minggu malam 20.00 WIB, ringkasan omzet, modal/HPP, laba,
+          produk terlaris, dan peringatan stok menipis dikirim ke email akun Pemilik toko ini — tanpa perlu klik. Untuk
+          arsip data, unduh cadangan di atas secara berkala.
+        </p>
       </CardContent>
     </Card>
   );
