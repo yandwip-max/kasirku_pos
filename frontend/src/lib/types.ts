@@ -187,6 +187,8 @@ export interface TopProduct {
 export interface ReportSummary {
   days: number;
   total_revenue: number;
+  /** HPP — harga modal barang yang terjual */
+  total_cogs: number;
   total_profit: number;
   transaction_count: number;
   phones_sold: number;
@@ -199,6 +201,8 @@ export interface ReportSummary {
 export interface DailyRow {
   date: string;
   revenue: number;
+  /** HPP hari itu */
+  cogs: number;
   profit: number;
   transactions: number;
   items_sold: number;
@@ -212,6 +216,7 @@ export interface DailyReport {
   days: number;
   rows: DailyRow[];
   total_revenue: number;
+  total_cogs: number;
   total_profit: number;
   total_transactions: number;
   best_day: string | null;

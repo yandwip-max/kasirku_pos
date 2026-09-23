@@ -24,6 +24,7 @@ class TopProduct(BaseModel):
 class ReportSummary(BaseModel):
     days: int
     total_revenue: int
+    total_cogs: int  # HPP: harga modal barang yang terjual
     total_profit: int
     transaction_count: int
     phones_sold: int
@@ -38,6 +39,7 @@ class DailyRow(BaseModel):
 
     date: str
     revenue: int
+    cogs: int  # HPP hari itu (harga modal x qty)
     profit: int
     transactions: int
     items_sold: int
@@ -51,6 +53,7 @@ class DailyReport(BaseModel):
     days: int
     rows: list[DailyRow]
     total_revenue: int
+    total_cogs: int
     total_profit: int
     total_transactions: int
     best_day: Optional[str] = None

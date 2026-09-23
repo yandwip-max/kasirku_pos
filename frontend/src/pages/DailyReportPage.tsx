@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, Coins, Receipt, TrendingUp } from "lucide-react";
+import { CalendarDays, Coins, Receipt, TrendingUp, Wallet } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { apiGet } from "@/lib/api";
 import type { DailyReport } from "@/lib/types";
@@ -76,12 +76,28 @@ export default function DailyReportPage() {
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
           <Kpi
             icon={<TrendingUp className="h-4 w-4" />}
             label="Total Penjualan"
             value={report ? formatRupiah(report.total_revenue) : null}
             hint={report ? `${report.days} hari terakhir` : undefined}
+          />
+          <Kpi
+            icon={<Wallet className="h-4 w-4" />}
+            label="Modal / HPP"
+            value={
+              report ? (
+                <span className="text-amber-600" data-testid="daily-report-total-cogs">
+                  {formatRupiah(report.total_cogs)}
+                </span>
+              ) : null
+            }
+            hint={
+              report && report.total_revenue > 0
+                ? `${((report.total_cogs / report.total_revenue) * 100).toFixed(1)}% dari penjualan`
+                : "Harga modal barang terjual"
+            }
           />
           <Kpi
             icon={<Coins className="h-4 w-4" />}
@@ -162,6 +178,7 @@ export default function DailyReportPage() {
                   <TableHead className="text-right">Tunai</TableHead>
                   <TableHead className="text-right">QRIS</TableHead>
                   <TableHead className="text-right">Total Penjualan</TableHead>
+                  <TableHead className="text-right">Modal (HPP)</TableHead>
                   <TableHead className="text-right">Keuntungan</TableHead>
                   <TableHead className="text-right">Margin</TableHead>
                 </TableRow>
@@ -170,7 +187,7 @@ export default function DailyReportPage() {
                 {reportQuery.isLoading &&
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={8}>
+                      <TableCell colSpan={9}>
                         <div className="h-8 animate-pulse rounded bg-slate-100" />
                       </TableCell>
                     </TableRow>
@@ -190,6 +207,9 @@ export default function DailyReportPage() {
                     <TableCell className="text-right font-mono text-xs text-slate-500">{formatRupiah(row.cash)}</TableCell>
                     <TableCell className="text-right font-mono text-xs text-slate-500">{formatRupiah(row.qris)}</TableCell>
                     <TableCell className="text-right font-mono text-sm font-bold">{formatRupiah(row.revenue)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm text-amber-700" data-testid="daily-report-row-cogs">
+                      {formatRupiah(row.cogs)}
+                    </TableCell>
                     <TableCell className="text-right font-mono text-sm font-bold text-emerald-600">
                       {formatRupiah(row.profit)}
                     </TableCell>
@@ -198,7 +218,7 @@ export default function DailyReportPage() {
                 ))}
                 {report && report.rows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-10 text-center text-sm text-slate-400">
+                    <TableCell colSpan={9} className="py-10 text-center text-sm text-slate-400">
                       Belum ada penjualan pada periode ini.
                     </TableCell>
                   </TableRow>

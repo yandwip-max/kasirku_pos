@@ -105,3 +105,7 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 - `GET /api/backup/csv/{products|units|transactions}` → CSV delimiter `;` + BOM UTF-8 (Excel ID). Dataset lain → 404.
 - UI: kartu **Backup Data Toko** di halaman /users; unduhan lewat fetch + blob karena butuh header bearer.
 - Catatan: daftar izin sisi klien (`PERMISSIONS_BY_ROLE` di `src/lib/auth.tsx`) HARUS ikut diperbarui saat menambah izin baru di `backend/lib/auth.py` — respons login tidak mengirim `permissions` (hanya `/auth/me`), jadi tombol bisa hilang bila lupa.
+
+## Modal / HPP di laporan
+- `ReportSummary.total_cogs` dan `DailyRow.cogs` + `DailyReport.total_cogs` (backend/models/report.py) dihitung dari snapshot `item.cost * qty` pada tiap transaksi (mengabaikan transaksi void), jadi `revenue - cogs == profit` selalu konsisten.
+- UI: KPI "Modal / HPP" di /reports dan /reports/daily (+ kolom "Modal (HPP)" per hari). Kasir tetap 403 untuk semua laporan.
