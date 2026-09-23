@@ -37,7 +37,7 @@ Semua field uang & stok di form (produk, unit IMEI) memakai **input teks digit-o
 - Index kunci: `{store_id, imei}` unik, `{store_id, transaction_number}` unik, `{store_id, client_ref}` unik **partial** (`$type: string`), `{store_id, created_at}`. `ensure_indexes()` juga men-drop index single-tenant lama.
 
 ## API (semua di bawah /api)
-Auth: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `GET /auth/users` (pemilik), `POST /auth/users` (pemilik), `PATCH /auth/users/{id}/deactivate` (pemilik, tidak bisa akun sendiri → 409)
+Auth: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `GET /auth/users` (pemilik), `POST /auth/users` (pemilik), `PATCH /auth/users/{id}` (pemilik — ubah nama, min 2 karakter, boleh akun sendiri), `PATCH /auth/users/{id}/deactivate` (pemilik, tidak bisa akun sendiri → 409)
 Produk: `GET /products?search=&type=&low_stock=`, `POST /products`, `PATCH /products/{id}`, `DELETE /products/{id}`, `GET|POST /products/{id}/units`, `DELETE /products/{id}/units/{unit_id}`
 Transaksi: `GET /transactions?period=today|7d|30d|all&method=&q=`, `POST /transactions`
 - validasi 2-tahap + claim atomik + rollback kompensasi; harga & **harga modal di-snapshot** per item
@@ -51,7 +51,7 @@ Laporan (pemilik): `GET /reports/summary?days=`, **`GET /reports/daily?days=7|14
 - `/transactions` — riwayat + filter + cetak ulang struk (Kasir tidak melihat laba)
 - `/reports/daily` — **Laporan Penjualan Harian**: KPI (penjualan, keuntungan, transaksi, hari terbaik), grafik batang penjualan + garis keuntungan, tabel rincian per hari
 - `/reports` — ringkasan: 5 KPI (termasuk Total Keuntungan), tren omset, donut metode bayar, top 5 produk
-- `/users` — pemilik: tambah pengguna (Pemilik/Kasir), aktif/nonaktifkan akun
+- `/users` — pemilik: tambah pengguna (Pemilik/Kasir), **edit nama pengguna** (tombol "Edit Nama" di tiap baris → `PATCH /auth/users/{id}`; email & peran tidak berubah, boleh mengubah nama sendiri dan header ikut ter-update lewat `refreshSession()` dari AuthProvider), aktif/nonaktifkan akun
 
 ## PWA & Offline
 - `public/manifest.webmanifest` (standalone, theme #0284C7, ikon 192/512/maskable-512, shortcut Kasir & Laporan Harian) + meta apple-touch-icon → installable di Android & iOS.

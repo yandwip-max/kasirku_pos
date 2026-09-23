@@ -16,6 +16,8 @@ interface AuthContextValue extends AuthState {
   login: (payload: LoginPayload) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
+  /** Re-pull /auth/me — used after renaming your own account so the header updates. */
+  refreshSession: () => Promise<void>;
   can: (action: string) => boolean;
   isOwner: boolean;
 }
@@ -114,16 +116,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession],
   );
 
+  const refreshSession = useCallback(async () => {
+    if (!getToken()) return;
+    try {
+      const me = await apiGet<MeOut>("/auth/me");
+      writeCachedSession({ user: me.user, store: me.store, permissions: me.permissions });
+      setState({ user: me.user, store: me.store, permissions: me.permissions, loading: false });
+    } catch {
+      /* offline or transient: keep the current session as-is */
+    }
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       ...state,
       login,
       register,
       logout: clearSession,
+      refreshSession,
       can: (action: string) => state.permissions.includes(action),
       isOwner: state.user?.role === "pemilik",
     }),
-    [state, login, register, clearSession],
+    [state, login, register, clearSession, refreshSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

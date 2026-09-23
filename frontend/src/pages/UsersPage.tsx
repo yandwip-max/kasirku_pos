@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ShieldCheck, UserPlus } from "lucide-react";
+import { Pencil, ShieldCheck, UserPlus } from "lucide-react";
 import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
-import type { CreateUserPayload, Role, User } from "@/lib/types";
+import type { CreateUserPayload, Role, UpdateUserPayload, User } from "@/lib/types";
 import { formatDateTime } from "@/lib/format";
 import { useAuth } from "@/lib/auth";
 import AppShell from "@/components/AppShell";
@@ -20,9 +20,84 @@ import { cn } from "@/lib/utils";
 
 const ROLE_LABEL: Record<Role, string> = { pemilik: "Pemilik", kasir: "Kasir" };
 
+/** Rename an account so it matches how the shop refers to the person. The name is
+ * what prints on receipts, so renaming yourself refreshes the session too. */
+function RenameUserDialog({
+  user,
+  isSelf,
+  onOpenChange,
+}: {
+  user: User | null;
+  isSelf: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [name, setName] = useState(user?.name ?? "");
+  const queryClient = useQueryClient();
+  const { refreshSession } = useAuth();
+
+  const rename = useMutation({
+    mutationFn: (payload: UpdateUserPayload) => apiPatch<User>(`/auth/users/${user?.id}`, payload),
+    onSuccess: async () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      if (isSelf) await refreshSession(); // header + receipts use this name
+      toast.success("Nama pengguna berhasil diperbarui");
+      onOpenChange(false);
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Gagal memperbarui nama pengguna")),
+  });
+
+  function submit() {
+    if (name.trim().length < 2) {
+      toast.error("Nama minimal 2 karakter");
+      return;
+    }
+    rename.mutate({ name: name.trim() });
+  }
+
+  return (
+    <Dialog open={user !== null} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md" data-testid="user-rename-dialog">
+        <DialogHeader>
+          <DialogTitle>Edit Nama Pengguna</DialogTitle>
+          <DialogDescription>
+            Sesuaikan nama akun dengan sebutan di toko (mis. "Kasir Pagi", "Admin Cabang 2"). Nama ini yang tercetak
+            di struk sebagai kasir.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="rename-input">Nama Pengguna *</Label>
+            <Input
+              id="rename-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !rename.isPending && submit()}
+              placeholder="cth. Kasir Pagi"
+              data-testid="user-rename-input"
+            />
+          </div>
+          <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+            Email <span className="font-medium text-slate-700">{user?.email}</span> dan peran{" "}
+            <span className="font-medium text-slate-700">{user ? ROLE_LABEL[user.role] : ""}</span> tidak berubah.
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Batal
+          </Button>
+          <Button onClick={submit} disabled={rename.isPending} data-testid="user-rename-save-btn">
+            {rename.isPending ? "Menyimpan…" : "Simpan Nama"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function UsersPage() {
   const { user: me, store } = useAuth();
   const [open, setOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<User | null>(null);
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "kasir" as Role });
   const queryClient = useQueryClient();
 
@@ -140,17 +215,27 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell className="text-sm text-slate-500">{formatDateTime(u.created_at)}</TableCell>
                     <TableCell className="text-right">
-                      {u.id !== me?.id && (
+                      <div className="flex justify-end gap-1">
                         <Button
                           variant="outline"
                           size="sm"
-                          data-testid="user-toggle-active-btn"
-                          disabled={toggleActive.isPending}
-                          onClick={() => toggleActive.mutate(u.id)}
+                          data-testid="user-edit-name-btn"
+                          onClick={() => setRenameTarget(u)}
                         >
-                          {u.is_active ? "Nonaktifkan" : "Aktifkan"}
+                          <Pencil className="h-3.5 w-3.5" /> Edit Nama
                         </Button>
-                      )}
+                        {u.id !== me?.id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            data-testid="user-toggle-active-btn"
+                            disabled={toggleActive.isPending}
+                            onClick={() => toggleActive.mutate(u.id)}
+                          >
+                            {u.is_active ? "Nonaktifkan" : "Aktifkan"}
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -166,6 +251,13 @@ export default function UsersPage() {
           </CardContent>
         </Card>
       </div>
+
+      <RenameUserDialog
+        key={renameTarget?.id ?? "none"}
+        user={renameTarget}
+        isSelf={renameTarget?.id === me?.id}
+        onOpenChange={(open) => !open && setRenameTarget(null)}
+      />
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md" data-testid="user-form-dialog">

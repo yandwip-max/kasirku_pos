@@ -64,6 +64,13 @@ class CreateUserIn(BaseModel):
     role: Literal["pemilik", "kasir"] = "kasir"
 
 
+class UpdateUserIn(BaseModel):
+    """Rename an account so it matches how the shop refers to the person
+    (e.g. "Kasir Pagi", "Admin Toko Cabang 2"). The name is what prints on receipts."""
+
+    name: str = Field(min_length=2, max_length=60)
+
+
 class SessionOut(BaseModel):
     """Login/register response: the token plus everything the UI needs to render the shell."""
 

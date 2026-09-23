@@ -56,6 +56,10 @@ export interface CreateUserPayload {
   role: Role;
 }
 
+export interface UpdateUserPayload {
+  name: string;
+}
+
 export interface Product {
   id: string;
   store_id: string;

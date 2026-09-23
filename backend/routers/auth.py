@@ -20,6 +20,7 @@ from models.auth import (
     RegisterIn,
     SessionOut,
     Store,
+    UpdateUserIn,
     User,
     UserOut,
 )
@@ -122,6 +123,20 @@ async def create_user(input: CreateUserIn, principal: Principal = Depends(requir
     )
     await db.users.insert_one(user.model_dump())
     return _user_out(user.model_dump())
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+async def update_user(user_id: str, input: UpdateUserIn, principal: Principal = Depends(require("user:manage"))):
+    """Rename an account in this store. Scoped by store_id, so a user from another
+    store is simply not found (404, never 403). Renaming yourself is allowed."""
+    name = input.name.strip()
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Nama minimal 2 karakter")
+    user = await db.users.find_one({"id": user_id, "store_id": principal.store_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    await db.users.update_one({"id": user_id, "store_id": principal.store_id}, {"$set": {"name": name}})
+    return _user_out({**user, "name": name})
 
 
 @router.patch("/users/{user_id}/deactivate", response_model=UserOut)
