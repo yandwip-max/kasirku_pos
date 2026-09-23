@@ -1,0 +1,95 @@
+{
+  "iteration": 2,
+  "summary": "Full acceptance-matrix pass against the new briefing (8 criteria) for the KasirKu POS app. 7 backend tests (3 new files + 1 pre-existing) + 8 new browser checks, all passed. One check re-verified through the APP_URL ingress domain. No bugs found.",
+  "passed": 15,
+  "failed": 0,
+  "bugs": [],
+  "action_items": [],
+  "retest_needed": false,
+  "checks": [
+    {
+      "criterion": "Transaksi kasir end-to-end (tunai & QRIS) termasuk handphone ber-IMEI dan diskon per item",
+      "name": "test_tscheck_transaction_end_to_end.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "test_transaction_with_imei_and_discount_succeeds_and_decrements_stock: POST /api/transactions with 1 handphone unit + Rp50.000 nominal discount -> 201, total=1.450.000, change=0; unit status flips to 'sold'. test_transaction_qris_payment_succeeds: POST /api/transactions payment_method=qris -> 201, total matches sell price. 2/2 passed."
+    },
+    {
+      "criterion": "Transaksi kasir end-to-end (browser) — cari produk, tambah ke keranjang, pilih IMEI, diskon nominal per item, bayar tunai pas, struk tampil",
+      "name": "pos-cash-imei-discount-checkout",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created fixture handphone (Rp1.500.000) + IMEI unit in Products, added to cart via POS, IMEI-select dialog worked, applied Rp50.000 nominal discount -> cart subtotal 'Rp 1.450.000' confirmed, paid exact cash, checkout-dialog closed, receipt-dialog appeared."
+    },
+    {
+      "criterion": "Validasi pembayaran tunai kurang dari total",
+      "name": "test_tscheck_transaction_end_to_end.py (test_cash_payment_below_total_is_rejected_and_stock_untouched)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /api/transactions amount_paid < total -> 400 'Jumlah uang tunai kurang dari total'; follow-up GET /products/{id}/units confirms unit status stayed 'in_stock' (stock untouched)."
+    },
+    {
+      "criterion": "Validasi pembayaran tunai kurang dari total (browser, front-end gate)",
+      "name": "pos-cash-shortfall-rejected",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Cart total Rp30.000, entered Rp10.000 cash -> checkout-change-amount shows 'Kurang: Rp 20.000' and checkout-submit-btn stays disabled (never reaches API while short); topping up to Rp30.000 re-enables the button, proving the gate is amount-driven."
+    },
+    {
+      "criterion": "CRUD produk & stok: tambah produk, tambah unit IMEI, edit harga, hapus, IMEI duplikat ditolak 409",
+      "name": "test_tscheck_imei_duplicate_and_kasir_permissions.py (test_duplicate_imei_rejected_409)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /products/{id}/units with a fresh IMEI -> 201; re-POST with the SAME IMEI -> 409 'IMEI ... sudah terdaftar di toko ini'."
+    },
+    {
+      "criterion": "CRUD produk & stok (browser): tambah unit IMEI, IMEI duplikat ditolak dengan toast error, edit harga tersimpan, hapus produk",
+      "name": "product-crud-delete-and-duplicate-imei",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created fixture handphone, added IMEI unit (success), re-submitted same IMEI -> toast 'sudah terdaftar' shown (409 confirmed in console). Edited sell price to Rp3.100.000, table row updated. Deleted product via confirm dialog, row disappeared from list."
+    },
+    {
+      "criterion": "Laporan harian & ringkasan menampilkan omzet dan laba konsisten dengan transaksi",
+      "name": "reports-daily-summary-shows-numbers",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "/reports shows report-total-profit = 'Rp 16.217.104' (non-NaN), date-range filter (7 hari) re-renders without blank state; /reports/daily shows daily-report-total-profit and daily-report-table with 13 populated rows. Re-verified once through APP_URL ingress domain (retail-kasir-app-3.preview.emergentagent.com) with consistent non-empty output."
+    },
+    {
+      "criterion": "Kelola pengguna: tambah kasir, edit nama, atur ulang password, aktif/nonaktifkan",
+      "name": "users-manage-cashier-lifecycle",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created fixture kasir user, renamed via user-rename-dialog, reset password via user-reset-password-dialog then confirmed POST /api/auth/login with new password -> 200; deactivated account via toggle -> row shows 'Nonaktif'; follow-up login attempt with same creds -> 403 (blocked)."
+    },
+    {
+      "criterion": "Kasir tidak melihat harga modal/laba dan ditolak 403 untuk laporan, pengguna, aktivitas, stok",
+      "name": "test_tscheck_imei_duplicate_and_kasir_permissions.py (test_kasir_does_not_see_cost_price_and_is_forbidden_from_reports_users_activity)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /products as kasir -> fixture product's cost_price is null; GET /reports/summary, /auth/users, /activity as kasir -> all 403."
+    },
+    {
+      "criterion": "Edit Profil Toko termasuk teks garansi & ucapan terima kasih; tampil di kartu & struk; dikosongkan kembali ke bawaan",
+      "name": "store-profile-warranty-and-thanks-on-receipt",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Set custom warranty/thanks text via store-profile-dialog -> store-profile-footer-preview shows both; completed a POS sale -> receipt-dialog also contains both custom texts. Cleared both fields -> footer-preview reverts to default 'Garansi resmi toko 7 hari...'."
+    },
+    {
+      "criterion": "Riwayat Aktivitas mencatat perubahan harga dengan nilai sebelum -> sesudah; filter kategori/periode/pencarian bekerja; Kasir tidak bisa membuka /activity",
+      "name": "activity-log-records-price-change-and-filters",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created fixture product, edited sell price 15.000->19.000; /activity search by product name shows row 'Harga jual: Rp 15.000 -> Rp 19.000'. Category filter 'Perubahan Harga' returned only rows tagged Harga. Period filter 'Hari Ini' rendered without error. Logged in as kasir and navigated to /activity -> activity-table never rendered (redirected/blocked), confirming 403 behavior surfaces correctly in the UI."
+    },
+    {
+      "criterion": "Dialog struk: pemilih kertas 58/80/A4, pratinjau berubah, tombol thermal tampil, cetak ulang dari /transactions, dialog cetak via iframe dibuat & dibersihkan",
+      "name": "receipt-dialog-paper-size-and-print-flows",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Switched to 80mm -> preview/hint updated, RawBT and Bluetooth buttons visible (Bluetooth correctly auto-disabled - no Web Bluetooth in headless Chromium), RawBT click did not crash. 'Dialog Cetak' created [data-testid=receipt-print-frame] then removed it (count 0 after). Reopened receipt from /transactions reprint flow -> 80mm choice persisted (bg-primary/active variant class retained), reprint button also produced and cleaned up a print iframe with no console errors."
+    }
+  ]
+}
