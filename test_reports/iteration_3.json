@@ -1,0 +1,81 @@
+{
+  "iteration": 3,
+  "summary": "Retest of KasirKu POS: re-ran 7 pre-existing backend tests + 8 pre-existing browser checks (all still passing), then added coverage for the two new features (Void/Retur, Backup Data) per the new briefing's 8-criterion acceptance matrix. 2 new backend test files (7 new test cases) + 4 new browser checks, all passed. No bugs found.",
+  "passed": 10,
+  "failed": 0,
+  "bugs": [],
+  "action_items": [],
+  "retest_needed": false,
+  "checks": [
+    {
+      "criterion": "Void transaksi aksesoris dari UI oleh Pemilik: stok naik kembali, badge+alasan+nama pembatal, toast sukses",
+      "name": "void-transaction-restores-stock-and-shows-badge",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created fixture accessory (stock 10), sold 2 via POS (stock->8), voided from /transactions with reason 'tscheck void aksesoris rusak' -> toast 'berhasil ... stok sudah dikembalikan', badge 'Dibatalkan' + void-reason cell showing reason and 'oleh Pak Pemilik' appeared, and /products confirmed stock returned to 10 (stock before:10 after sale:8 after void:10). No console errors."
+    },
+    {
+      "criterion": "Retur transaksi handphone ber-IMEI: unit kembali in_stock dan bisa dijual lagi di POS",
+      "name": "retur-transaction-restores-imei-and-resellable",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Created fixture handphone+IMEI, sold via POS (product disappeared from POS search once sold), retur from /transactions -> toast 'Retur ... berhasil', 'Retur' badge shown; re-searching in POS showed the product again and the exact same IMEI was offered in the IMEI-select dialog, proving it is in_stock and resellable."
+    },
+    {
+      "criterion": "Void/retur backend behavior: stok/IMEI dikembalikan, laporan mengecualikan transaksi void",
+      "name": "test_tscheck_void_retur.py (test_void_accessory_restores_stock_and_excludes_from_reports, test_retur_handphone_restores_imei_and_is_resellable)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST /transactions then POST /transactions/{id}/void void_type=void -> 200, stock_qty back to pre-sale value via GET /products; report /reports/summary?days=1 total_revenue drops by exactly the voided transaction's total. Retur test: unit status flips sold->in_stock after retur and a fresh POST /transactions re-selling the same unit_id succeeds (201)."
+    },
+    {
+      "criterion": "Proteksi void: alasan <3 karakter->422, void dua kali->409, id tidak ada->404, Kasir->403; tombol 'Batalkan' tidak tampil bagi Kasir",
+      "name": "test_tscheck_void_retur.py (test_void_protections_reason_length_double_void_missing_id_and_kasir_forbidden)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "POST .../void reason='ab' -> 422; kasir token on same id -> 403; first void -> 200; same id voided again -> 409; POST .../tscheck-does-not-exist/void -> 404."
+    },
+    {
+      "criterion": "Proteksi void (browser): tombol 'Batalkan' tidak tampil bagi Kasir",
+      "name": "void-button-hidden-for-kasir",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "Logged in as kasir@demo.id, /transactions renders rows (transaction-detail-btn visible, proving the page loaded fine) but transaction-void-btn has count 0 for the whole page — the control is gated, not a broken render."
+    },
+    {
+      "criterion": "Aktivitas mencatat void/retur: baris baru berisi nomor struk, nilai, alasan, nama pelaku",
+      "name": "test_tscheck_void_retur.py (test_void_activity_logged_with_receipt_number_reason_and_actor)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "After voiding a fixture transaction, GET /activity?q={transaction_number} returns a row whose summary contains the transaction number, the reason 'tscheck alasan aktivitas', and a non-empty actor_name."
+    },
+    {
+      "criterion": "Backup unduh dari UI: keempat tombol memicu unduhan dengan nama berkas kasirku-*-YYYY-MM-DD.json/.csv",
+      "name": "backup-download-buttons-trigger-files",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "On /users, clicked backup-json-btn, backup-products-csv-btn, backup-units-csv-btn, backup-transactions-csv-btn in turn; each fired a real download event with suggestedFilename matching kasirku-{kind}-2026-09-23.{json|csv}, and each showed a '... berhasil diunduh' toast."
+    },
+    {
+      "criterion": "Backup JSON memuat counts produk/unit/transaksi/aktivitas; CSV terbaca header + delimiter ';'; isolasi multi-toko; Kasir ditolak 403",
+      "name": "test_tscheck_backup.py",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "GET /backup/export -> 200, filename ends .json, snapshot.counts[key]==len(snapshot.data[key]) for products/product_units/transactions/activity_logs, fixture product id present, all product rows' store_id (if present) equal the logged-in store_id. GET /backup/csv/products -> 200 text/csv, BOM-stripped rows parse with ';' delimiter, header matches expected columns, fixture product id present in a row. GET /backup/csv/not-a-real-dataset -> 404; kasir token on /backup/export and /backup/csv/products -> 403 both."
+    },
+    {
+      "criterion": "Regresi alur inti: transaksi tunai/QRIS, diskon per item, cetak ulang 58/80/A4, reset password, edit profil toko + catatan kaki struk",
+      "name": "pos-cash-imei-discount-checkout, pos-cash-shortfall-rejected, product-crud-delete-and-duplicate-imei, reports-daily-summary-shows-numbers, users-manage-cashier-lifecycle, store-profile-warranty-and-thanks-on-receipt, activity-log-records-price-change-and-filters, receipt-dialog-paper-size-and-print-flows (all re-run by name)",
+      "lane": "browser",
+      "status": "passed",
+      "evidence": "All 8 pre-existing browser checks re-ran clean (reran-persisted / same assertions as iteration 2): IMEI+discount checkout subtotal Rp1.450.000 and receipt shown; cash-shortfall gate blocks submit until topped up; product CRUD incl. duplicate-IMEI 409 toast and delete; /reports & /reports/daily show non-empty numeric totals; cashier lifecycle (create/rename/reset-password login/deactivate->403); store profile footer default/custom/receipt propagation; activity log price-change diff + filters + kasir 403; receipt paper-size switch, RawBT/Bluetooth buttons, print-iframe create/cleanup, reprint from /transactions."
+    },
+    {
+      "criterion": "Regresi backend: transaksi end-to-end, validasi tunai kurang, IMEI duplikat 409, kasir tidak lihat cost/laba & 403 pada reports/users/activity",
+      "name": "test_tscheck_transaction_end_to_end.py, test_tscheck_imei_duplicate_and_kasir_permissions.py, test_tscheck_voucher_price_integer.py (re-run)",
+      "lane": "backend",
+      "status": "passed",
+      "evidence": "Full backend suite re-run: 14 passed in 7.64s (7 pre-existing + 7 new in test_tscheck_void_retur.py/test_tscheck_backup.py), no regressions."
+    }
+  ]
+}
