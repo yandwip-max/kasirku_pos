@@ -60,6 +60,16 @@ export interface UpdateUserPayload {
   name: string;
 }
 
+export interface ResetPasswordPayload {
+  password: string;
+}
+
+export interface StoreUpdatePayload {
+  name: string;
+  address: string;
+  phone: string;
+}
+
 export interface Product {
   id: string;
   store_id: string;

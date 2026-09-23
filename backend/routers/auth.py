@@ -2,6 +2,7 @@ from datetime import timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
+from pymongo import ReturnDocument
 
 from lib.auth import (
     PERMISSIONS,
@@ -18,8 +19,10 @@ from models.auth import (
     LoginIn,
     MeOut,
     RegisterIn,
+    ResetPasswordIn,
     SessionOut,
     Store,
+    StoreUpdateIn,
     UpdateUserIn,
     User,
     UserOut,
@@ -137,6 +140,39 @@ async def update_user(user_id: str, input: UpdateUserIn, principal: Principal = 
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
     await db.users.update_one({"id": user_id, "store_id": principal.store_id}, {"$set": {"name": name}})
     return _user_out({**user, "name": name})
+
+
+@router.patch("/users/{user_id}/password", response_model=UserOut)
+async def reset_password(
+    user_id: str, input: ResetPasswordIn, principal: Principal = Depends(require("user:manage"))
+):
+    """Owner resets a staff password (forgotten, or the account is handed to someone new).
+    The old password is not required — the owner already proved who they are."""
+    user = await db.users.find_one({"id": user_id, "store_id": principal.store_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
+    await db.users.update_one(
+        {"id": user_id, "store_id": principal.store_id},
+        {"$set": {"password_hash": hash_password(input.password)}},
+    )
+    return _user_out(user)
+
+
+@router.patch("/store", response_model=Store)
+async def update_store(input: StoreUpdateIn, principal: Principal = Depends(require("user:manage"))):
+    """Edit the shop identity printed on the receipt header. Always scoped to the
+    caller's own store — a store_id can never be supplied by the client."""
+    updates = {
+        "name": input.name.strip(),
+        "address": input.address.strip(),
+        "phone": input.phone.strip(),
+    }
+    store = await db.stores.find_one_and_update(
+        {"id": principal.store_id}, {"$set": updates}, return_document=ReturnDocument.AFTER
+    )
+    if not store:
+        raise HTTPException(status_code=404, detail="Data toko tidak ditemukan")
+    return _store_out(store)
 
 
 @router.patch("/users/{user_id}/deactivate", response_model=UserOut)

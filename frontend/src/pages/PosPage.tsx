@@ -10,6 +10,7 @@ import { enqueueSale, newClientRef, pendingLinesFromCart } from "@/lib/offlineQu
 import type { CartLine, CheckoutPayload, DiscountType, PriceTier, Product, ProductUnit, Transaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import ProductGrid from "@/components/pos/ProductGrid";
+import LowStockAlert from "@/components/pos/LowStockAlert";
 import ImeiUnitDialog from "@/components/pos/ImeiUnitDialog";
 import CartPanel from "@/components/pos/CartPanel";
 import CheckoutDialog from "@/components/pos/CheckoutDialog";
@@ -209,6 +210,7 @@ export default function PosPage() {
     <AppShell>
       <div className="mx-auto grid max-w-[1440px] grid-cols-1 gap-4 p-4 lg:h-[calc(100svh-4.5rem)] lg:grid-cols-12 lg:overflow-hidden lg:p-6">
         <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm lg:col-span-8">
+          <LowStockAlert />
           <div className="border-b border-slate-100 p-4">
             <div className="flex items-center justify-between gap-4">
               <h1 className="font-heading text-lg font-bold">Katalog Produk</h1>

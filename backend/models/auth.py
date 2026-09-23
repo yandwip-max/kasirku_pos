@@ -71,6 +71,20 @@ class UpdateUserIn(BaseModel):
     name: str = Field(min_length=2, max_length=60)
 
 
+class ResetPasswordIn(BaseModel):
+    """Owner-issued password reset for a staff account (forgotten password / new hire)."""
+
+    password: str = Field(min_length=6, max_length=72)
+
+
+class StoreUpdateIn(BaseModel):
+    """Shop identity printed on the receipt header."""
+
+    name: str = Field(min_length=2, max_length=80)
+    address: str = Field(default="", max_length=160)
+    phone: str = Field(default="", max_length=32)
+
+
 class SessionOut(BaseModel):
     """Login/register response: the token plus everything the UI needs to render the shell."""
 

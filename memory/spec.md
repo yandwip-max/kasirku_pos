@@ -66,3 +66,8 @@ Laporan (pemilik): `GET /reports/summary?days=`, **`GET /reports/daily?days=7|14
 - QRIS = **simulasi visual**, bukan integrasi pembayaran asli.
 - Jam server UTC; semua agregasi harian & "Hari Ini" memakai Asia/Jakarta (WIB).
 - Unit yang sudah terjual tidak bisa dihapus (409) agar jejak transaksi konsisten.
+
+## Pengaturan Toko & Akun (halaman /users, khusus Pemilik)
+- **Profil Toko** — kartu `store-profile-card` + dialog edit (`PATCH /api/auth/store`): nama, alamat, no. WhatsApp. Ketiganya tercetak di kepala struk (`ReceiptView.tsx`).
+- **Atur Ulang Password** — tombol "Password" per baris pengguna (`PATCH /api/auth/users/{user_id}/password`). Password lama tidak diperlukan; min. 6 karakter, harus sama dengan konfirmasi. Scoped `store_id` (pengguna toko lain → 404).
+- **Notifikasi Stok Menipis** — `LowStockAlert` di halaman Kasir (POS) membandingkan `stock_qty` vs `min_stock` untuk aksesoris & voucher.

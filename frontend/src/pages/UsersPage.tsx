@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Pencil, ShieldCheck, UserPlus } from "lucide-react";
+import { KeyRound, Pencil, ShieldCheck, UserPlus } from "lucide-react";
+import { ResetPasswordDialog, StoreProfileCard } from "@/components/StoreSettings";
 import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import type { CreateUserPayload, Role, UpdateUserPayload, User } from "@/lib/types";
@@ -98,6 +99,7 @@ export default function UsersPage() {
   const { user: me, store } = useAuth();
   const [open, setOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<User | null>(null);
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "kasir" as Role });
   const queryClient = useQueryClient();
 
@@ -158,6 +160,8 @@ export default function UsersPage() {
             <UserPlus className="h-4 w-4" /> Tambah Pengguna
           </Button>
         </div>
+
+        <StoreProfileCard />
 
         <Card>
           <CardContent className="p-0">
@@ -224,6 +228,14 @@ export default function UsersPage() {
                         >
                           <Pencil className="h-3.5 w-3.5" /> Edit Nama
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          data-testid="user-reset-password-btn"
+                          onClick={() => setResetTarget(u)}
+                        >
+                          <KeyRound className="h-3.5 w-3.5" /> Password
+                        </Button>
                         {u.id !== me?.id && (
                           <Button
                             variant="outline"
@@ -257,6 +269,12 @@ export default function UsersPage() {
         user={renameTarget}
         isSelf={renameTarget?.id === me?.id}
         onOpenChange={(open) => !open && setRenameTarget(null)}
+      />
+
+      <ResetPasswordDialog
+        key={`reset-${resetTarget?.id ?? "none"}`}
+        user={resetTarget}
+        onOpenChange={(open) => !open && setResetTarget(null)}
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
