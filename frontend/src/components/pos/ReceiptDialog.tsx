@@ -4,7 +4,7 @@ import type { Transaction } from "@/lib/types";
 import ReceiptView from "@/components/ReceiptView";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { applyPaperSize, loadPaperSize, PAPER_OPTIONS, type PaperSize } from "@/lib/printer";
+import { applyPaperSize, loadPaperSize, PAPER_OPTIONS, printReceipt, type PaperSize } from "@/lib/printer";
 import { cn } from "@/lib/utils";
 
 interface ReceiptDialogProps {
@@ -68,7 +68,7 @@ export default function ReceiptDialog({ transaction, open, onOpenChange, printTe
           <Button
             className="flex-1 active:scale-[0.98] transition-transform duration-100"
             data-testid={printTestId}
-            onClick={() => window.print()}
+            onClick={() => printReceipt(paper)}
           >
             <Printer className="h-4 w-4" /> Cetak Struk
           </Button>
