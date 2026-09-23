@@ -81,3 +81,10 @@ Laporan (pemilik): `GET /reports/summary?days=`, **`GET /reports/daily?days=7|14
 ## Cetak Struk — ukuran kertas printer
 - Dialog struk punya pemilih **58 mm / 80 mm / A4** (`src/lib/printer.ts`, tersimpan di localStorage `kasirku.paper-size`).
 - Pilihan menulis `body[data-paper]` + menyuntik `@page { size: 58mm auto; margin: 0 }`; aturan cetak per ukuran ada di `src/index.css`. 58 mm = printer portable/bluetooth (font & padding lebih rapat, `ReceiptView compact`).
+
+## Cetak ke printer thermal portable / bluetooth
+Dialog struk punya 3 jalur cetak (`src/lib/printer.ts`, teks ESC/POS di `src/lib/escpos.ts`):
+1. **RawBT (Android)** — `intent:<teks>#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`. Jalur utama untuk printer bluetooth 58mm; user perlu pasang app RawBT (link Play Store ada di dialog).
+2. **Bluetooth langsung (Web Bluetooth)** — pair lewat `navigator.bluetooth`, cari service serial 0x18F0/0xFF00/0xAE30/0xFFE0, tulis byte ESC/POS per 180 byte. Tombol nonaktif bila browser tak mendukung.
+3. **Dialog Cetak** — iframe cetak (printer USB/LAN/A4).
+Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.

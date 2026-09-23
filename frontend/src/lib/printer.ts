@@ -87,3 +87,96 @@ export function printReceipt(size: PaperSize): void {
   if (doc.readyState === "complete") setTimeout(run, 350);
   else frame.onload = () => setTimeout(run, 350);
 }
+
+/* ── Direct thermal printing (portable / bluetooth printers) ─────────────────
+ * The browser print dialog cannot reach a bluetooth 58 mm printer on Android, so the
+ * receipt is sent as ESC/POS instead: RawBT (an Android print bridge app) via intent,
+ * or straight over Web Bluetooth when the printer exposes a BLE serial service. */
+
+/* Minimal Web Bluetooth typings — the API is not in TypeScript's DOM lib yet. */
+interface BleCharacteristic {
+  properties: { write: boolean; writeWithoutResponse: boolean };
+  writeValue(data: BufferSource): Promise<void>;
+  writeValueWithoutResponse?(data: BufferSource): Promise<void>;
+}
+interface BleService {
+  getCharacteristics(): Promise<BleCharacteristic[]>;
+}
+interface BleServer {
+  getPrimaryService(service: number | string): Promise<BleService>;
+  disconnect(): void;
+}
+interface BleDevice {
+  gatt?: { connect(): Promise<BleServer>; disconnect(): void };
+}
+interface BluetoothApi {
+  requestDevice(options: {
+    filters?: { services: (number | string)[] }[];
+    optionalServices?: (number | string)[];
+  }): Promise<BleDevice>;
+}
+
+function bluetoothApi(): BluetoothApi | null {
+  return (navigator as Navigator & { bluetooth?: BluetoothApi }).bluetooth ?? null;
+}
+
+export function isAndroid(): boolean {
+  return /android/i.test(navigator.userAgent);
+}
+
+export function hasWebBluetooth(): boolean {
+  return bluetoothApi() !== null;
+}
+
+/** Hand the plain-text receipt to the RawBT app, which owns the bluetooth pairing. */
+export function printViaRawBT(text: string): void {
+  const intent = `intent:${encodeURIComponent(text)}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;`;
+  window.location.href = intent;
+}
+
+export const RAWBT_PLAY_URL = "https://play.google.com/store/apps/details?id=ru.a402d.rawbtprinter";
+
+// Serial-over-BLE services used by virtually every cheap 58 mm printer
+const BLE_SERVICES = [0x18f0, 0xff00, 0xae30, 0xffe0];
+
+async function writableCharacteristic(server: BleServer) {
+  for (const service of BLE_SERVICES) {
+    try {
+      const svc = await server.getPrimaryService(service);
+      for (const ch of await svc.getCharacteristics()) {
+        if (ch.properties.write || ch.properties.writeWithoutResponse) return ch;
+      }
+    } catch {
+      // service not present on this printer — try the next one
+    }
+  }
+  return null;
+}
+
+/** Pair (user gesture required) and stream the ESC/POS bytes in BLE-sized chunks. */
+export async function printViaBluetooth(bytes: Uint8Array): Promise<void> {
+  const bluetooth = bluetoothApi();
+  if (!bluetooth) throw new Error("Browser ini tidak mendukung Bluetooth langsung (pakai Chrome Android).");
+
+  const device = await bluetooth.requestDevice({
+    filters: BLE_SERVICES.map((s) => ({ services: [s] })),
+    optionalServices: BLE_SERVICES,
+  });
+  const server = await device.gatt?.connect();
+  if (!server) throw new Error("Gagal menyambung ke printer.");
+
+  const characteristic = await writableCharacteristic(server);
+  if (!characteristic) {
+    device.gatt?.disconnect();
+    throw new Error("Printer tersambung tapi tidak menerima data cetak. Coba mode RawBT.");
+  }
+
+  const CHUNK = 180; // larger writes overflow the buffer on most 58 mm controllers
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const chunk = bytes.slice(i, i + CHUNK);
+    if (characteristic.writeValueWithoutResponse) await characteristic.writeValueWithoutResponse(chunk);
+    else await characteristic.writeValue(chunk);
+    await new Promise((r) => setTimeout(r, 12));
+  }
+  device.gatt?.disconnect();
+}
