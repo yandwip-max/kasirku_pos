@@ -86,10 +86,10 @@ export default function ReceiptView({ transaction, compact = false }: { transact
       <Row label={t.payment_method === "tunai" ? "Bayar (Tunai)" : "Bayar (QRIS)"} value={formatRupiah(t.amount_paid)} />
       <Row label="Kembalian" value={formatRupiah(t.change_amount)} />
       <Dotted />
-      <p className="text-center text-[10px] leading-snug text-slate-500">
-        Garansi resmi toko 7 hari (tukar unit bila ada cacat pabrik).
-        <br />
-        Terima kasih telah berbelanja!
+      <p className={compact ? "text-center text-[8px] leading-tight text-slate-500" : "text-center text-[10px] leading-snug text-slate-500"}>
+        {store?.receipt_warranty}
+        {store?.receipt_warranty && store?.receipt_thanks ? <br /> : null}
+        {store?.receipt_thanks}
       </p>
     </div>
   );

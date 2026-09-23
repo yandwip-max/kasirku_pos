@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 /** Owner-issued password reset: no old password needed — the owner is already signed in. */
 export function ResetPasswordDialog({
@@ -112,11 +113,17 @@ export function ResetPasswordDialog({
 export function StoreProfileCard() {
   const { store, refreshSession } = useAuth();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", address: "", phone: "" });
+  const [form, setForm] = useState({ name: "", address: "", phone: "", warranty: "", thanks: "" });
   const queryClient = useQueryClient();
 
   function openEditor() {
-    setForm({ name: store?.name ?? "", address: store?.address ?? "", phone: store?.phone ?? "" });
+    setForm({
+      name: store?.name ?? "",
+      address: store?.address ?? "",
+      phone: store?.phone ?? "",
+      warranty: store?.receipt_warranty ?? "",
+      thanks: store?.receipt_thanks ?? "",
+    });
     setOpen(true);
   }
 
@@ -136,7 +143,13 @@ export function StoreProfileCard() {
       toast.error("Nama toko minimal 2 karakter");
       return;
     }
-    save.mutate({ name: form.name.trim(), address: form.address.trim(), phone: form.phone.trim() });
+    save.mutate({
+      name: form.name.trim(),
+      address: form.address.trim(),
+      phone: form.phone.trim(),
+      receipt_warranty: form.warranty.trim(),
+      receipt_thanks: form.thanks.trim(),
+    });
   }
 
   return (
@@ -156,6 +169,9 @@ export function StoreProfileCard() {
                 {store?.phone ? ` · WA ${store.phone}` : ""}
               </p>
               <p className="mt-0.5 text-xs text-slate-400">Data ini tercetak di kepala struk pembayaran.</p>
+              <p className="mt-0.5 truncate text-xs text-slate-400" data-testid="store-profile-footer-preview">
+                Kaki struk: {store?.receipt_warranty || "-"} · {store?.receipt_thanks || "-"}
+              </p>
             </div>
           </div>
           <Button variant="outline" data-testid="store-profile-edit-btn" onClick={openEditor}>
@@ -197,10 +213,36 @@ export function StoreProfileCard() {
                 id="store-phone"
                 value={form.phone}
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                onKeyDown={(e) => e.key === "Enter" && !save.isPending && submit()}
                 placeholder="0812-3456-7890"
                 data-testid="store-phone-input"
               />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="store-warranty">Teks Garansi di Struk</Label>
+              <Textarea
+                id="store-warranty"
+                rows={2}
+                maxLength={200}
+                value={form.warranty}
+                onChange={(e) => setForm((f) => ({ ...f, warranty: e.target.value }))}
+                placeholder="cth. Garansi resmi toko 7 hari (tukar unit bila ada cacat pabrik)."
+                data-testid="store-warranty-input"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="store-thanks">Ucapan Terima Kasih di Struk</Label>
+              <Input
+                id="store-thanks"
+                maxLength={120}
+                value={form.thanks}
+                onChange={(e) => setForm((f) => ({ ...f, thanks: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && !save.isPending && submit()}
+                placeholder="cth. Terima kasih, silakan datang kembali!"
+                data-testid="store-thanks-input"
+              />
+              <p className="text-[11px] text-slate-400">
+                Kosongkan untuk memakai teks bawaan. Kedua teks ini tercetak di bagian bawah struk.
+              </p>
             </div>
           </div>
           <DialogFooter>

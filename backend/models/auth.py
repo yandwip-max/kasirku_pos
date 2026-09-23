@@ -18,6 +18,9 @@ class Store(BaseModel):
     name: str
     address: str = ""
     phone: str = ""
+    # editable receipt footer: warranty note + closing greeting
+    receipt_warranty: str = "Garansi resmi toko 7 hari (tukar unit bila ada cacat pabrik)."
+    receipt_thanks: str = "Terima kasih telah berbelanja!"
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -83,6 +86,9 @@ class StoreUpdateIn(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     address: str = Field(default="", max_length=160)
     phone: str = Field(default="", max_length=32)
+    # receipt footer text; omitted = keep whatever is stored
+    receipt_warranty: Optional[str] = Field(default=None, max_length=200)
+    receipt_thanks: Optional[str] = Field(default=None, max_length=120)
 
 
 class SessionOut(BaseModel):

@@ -48,11 +48,14 @@ def _user_out(doc: dict) -> UserOut:
 
 
 def _store_out(doc: dict) -> Store:
+    defaults = Store(id=doc["id"], name=doc["name"], created_at=_aware(doc["created_at"]))
     return Store(
         id=doc["id"],
         name=doc["name"],
         address=doc.get("address", ""),
         phone=doc.get("phone", ""),
+        receipt_warranty=doc.get("receipt_warranty") or defaults.receipt_warranty,
+        receipt_thanks=doc.get("receipt_thanks") or defaults.receipt_thanks,
         created_at=_aware(doc["created_at"]),
     )
 
@@ -189,6 +192,11 @@ async def update_store(input: StoreUpdateIn, principal: Principal = Depends(requ
         "address": input.address.strip(),
         "phone": input.phone.strip(),
     }
+    # receipt footer: empty string means "back to the default wording"
+    if input.receipt_warranty is not None:
+        updates["receipt_warranty"] = input.receipt_warranty.strip()
+    if input.receipt_thanks is not None:
+        updates["receipt_thanks"] = input.receipt_thanks.strip()
     store = await db.stores.find_one_and_update(
         {"id": principal.store_id}, {"$set": updates}, return_document=ReturnDocument.AFTER
     )

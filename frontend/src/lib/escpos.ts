@@ -72,8 +72,8 @@ export function receiptText(t: Transaction, store: Store | null, paper: "58" | "
   out.push(pad(t.payment_method === "tunai" ? "Bayar (Tunai)" : "Bayar (QRIS)", formatRupiah(t.amount_paid), w));
   out.push(pad("Kembalian", formatRupiah(t.change_amount), w));
   out.push(dash);
-  wrap("Garansi resmi toko 7 hari (tukar unit bila ada cacat pabrik).", w).forEach((l) => out.push(center(l, w)));
-  out.push(center("Terima kasih telah berbelanja!", w));
+  if (store?.receipt_warranty) wrap(store.receipt_warranty, w).forEach((l) => out.push(center(l, w)));
+  if (store?.receipt_thanks) wrap(store.receipt_thanks, w).forEach((l) => out.push(center(l, w)));
 
   return out.join("\n");
 }

@@ -88,3 +88,8 @@ Dialog struk punya 3 jalur cetak (`src/lib/printer.ts`, teks ESC/POS di `src/lib
 2. **Bluetooth langsung (Web Bluetooth)** — pair lewat `navigator.bluetooth`, cari service serial 0x18F0/0xFF00/0xAE30/0xFFE0, tulis byte ESC/POS per 180 byte. Tombol nonaktif bila browser tak mendukung.
 3. **Dialog Cetak** — iframe cetak (printer USB/LAN/A4).
 Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
+
+## Catatan kaki struk (bisa diubah Pemilik)
+- Field `stores.receipt_warranty` & `stores.receipt_thanks` (default: "Garansi resmi toko 7 hari…" / "Terima kasih telah berbelanja!").
+- Diedit di dialog **Edit Profil Toko** (halaman /users). Mengosongkan field = kembali ke teks bawaan. Batas 200 & 120 karakter (lebih dari itu → 422).
+- Dipakai di `ReceiptView.tsx` (tampilan + dialog cetak) dan `lib/escpos.ts` (RawBT/Bluetooth), jadi teks kustom ikut tercetak di printer 58mm.

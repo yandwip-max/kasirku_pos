@@ -11,6 +11,9 @@ export interface Store {
   name: string;
   address: string;
   phone: string;
+  /** editable receipt footer */
+  receipt_warranty: string;
+  receipt_thanks: string;
   created_at: string;
 }
 
@@ -68,6 +71,9 @@ export interface StoreUpdatePayload {
   name: string;
   address: string;
   phone: string;
+  /** omit to keep the stored text; empty string restores the default wording */
+  receipt_warranty?: string;
+  receipt_thanks?: string;
 }
 
 export interface Product {
