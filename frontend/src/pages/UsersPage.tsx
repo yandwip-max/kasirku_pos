@@ -34,6 +34,7 @@ function RenameUserDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [name, setName] = useState(user?.name ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
   const queryClient = useQueryClient();
   const { refreshSession } = useAuth();
 
@@ -42,10 +43,10 @@ function RenameUserDialog({
     onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       if (isSelf) await refreshSession(); // header + receipts use this name
-      toast.success("Nama pengguna berhasil diperbarui");
+      toast.success("Data akun berhasil diperbarui");
       onOpenChange(false);
     },
-    onError: (err) => toast.error(apiErrorMessage(err, "Gagal memperbarui nama pengguna")),
+    onError: (err) => toast.error(apiErrorMessage(err, "Gagal memperbarui data akun")),
   });
 
   function submit() {
@@ -53,17 +54,22 @@ function RenameUserDialog({
       toast.error("Nama minimal 2 karakter");
       return;
     }
-    rename.mutate({ name: name.trim() });
+    const nextEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(nextEmail)) {
+      toast.error("Format email tidak valid");
+      return;
+    }
+    rename.mutate({ name: name.trim(), email: nextEmail });
   }
 
   return (
     <Dialog open={user !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md" data-testid="user-rename-dialog">
         <DialogHeader>
-          <DialogTitle>Edit Nama Pengguna</DialogTitle>
+          <DialogTitle>Edit Akun Pengguna</DialogTitle>
           <DialogDescription>
-            Sesuaikan nama akun dengan sebutan di toko (mis. "Kasir Pagi", "Admin Cabang 2"). Nama ini yang tercetak
-            di struk sebagai kasir.
+            Sesuaikan nama akun dengan sebutan di toko (mis. "Kasir Pagi", "Admin Cabang 2") — nama ini yang tercetak
+            di struk. Email adalah alamat login sekaligus tujuan laporan mingguan otomatis.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4">
@@ -73,14 +79,31 @@ function RenameUserDialog({
               id="rename-input"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !rename.isPending && submit()}
               placeholder="cth. Kasir Pagi"
               data-testid="user-rename-input"
             />
           </div>
+          <div className="grid gap-2">
+            <Label htmlFor="email-input">Email Login *</Label>
+            <Input
+              id="email-input"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !rename.isPending && submit()}
+              placeholder="nama@gmail.com"
+              data-testid="user-email-input"
+            />
+            <p className="text-[11px] text-slate-400">
+              {user?.role === "pemilik"
+                ? "Pakai email aktif Anda: laporan mingguan toko dikirim ke alamat ini setiap Minggu 20.00 WIB."
+                : "Email ini dipakai kasir untuk login."}{" "}
+              Setelah diubah, login memakai email baru.
+            </p>
+          </div>
           <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-            Email <span className="font-medium text-slate-700">{user?.email}</span> dan peran{" "}
-            <span className="font-medium text-slate-700">{user ? ROLE_LABEL[user.role] : ""}</span> tidak berubah.
+            Peran <span className="font-medium text-slate-700">{user ? ROLE_LABEL[user.role] : ""}</span> dan password
+            tidak berubah.
           </div>
         </div>
         <DialogFooter>
@@ -88,7 +111,7 @@ function RenameUserDialog({
             Batal
           </Button>
           <Button onClick={submit} disabled={rename.isPending} data-testid="user-rename-save-btn">
-            {rename.isPending ? "Menyimpan…" : "Simpan Nama"}
+            {rename.isPending ? "Menyimpan…" : "Simpan Perubahan"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -228,7 +251,7 @@ export default function UsersPage() {
                           data-testid="user-edit-name-btn"
                           onClick={() => setRenameTarget(u)}
                         >
-                          <Pencil className="h-3.5 w-3.5" /> Edit Nama
+                          <Pencil className="h-3.5 w-3.5" /> Edit Akun
                         </Button>
                         <Button
                           variant="outline"

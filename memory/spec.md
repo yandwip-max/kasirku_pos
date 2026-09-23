@@ -116,3 +116,7 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 - Pekerjaan: untuk SETIAP akun `role=pemilik` yang aktif, kirim email berisi ringkasan 7 hari toko-nya (omzet, HPP, laba, transaksi, item, HP terjual, void/retur, stok menipis, 3 produk terlaris) + pengingat unduh cadangan. Jadi toko baru yang mendaftar otomatis ikut menerima.
 - Email dikirim via Emergent managed Resend (`backend/lib/email.py`): `EMERGENT_EMAIL_KEY`, `EMAIL_FROM_NAME="KasirKu POS"`, gate `_assert_safe_email` dipanggil di setiap pengiriman. Provider tidak mendukung lampiran, jadi email berisi ringkasan saja (sesuai permintaan user).
 - Catatan: email `pemilik@demo.id` (data demo) ditolak provider sebagai "undeliverable recipient" — normal untuk domain palsu. Akun dengan email asli akan terkirim (diverifikasi via `delivered@resend.dev`, email_id kembali).
+
+## Ubah email login pengguna
+- `PATCH /api/auth/users/{id}` sekarang menerima `{name, email?}` (UpdateUserIn). Email divalidasi EmailStr, di-lowercase, dan harus unik lintas toko (bentrok → 409). Perubahan email dicatat di Riwayat Aktivitas dengan nilai sebelum → sesudah.
+- UI: dialog **Edit Akun Pengguna** (tombol "Edit Akun" di /users) berisi Nama + Email Login. Untuk Pemilik ada catatan bahwa laporan mingguan dikirim ke email tersebut. Setelah diubah, login memakai email baru.

@@ -72,6 +72,8 @@ class UpdateUserIn(BaseModel):
     (e.g. "Kasir Pagi", "Admin Toko Cabang 2"). The name is what prints on receipts."""
 
     name: str = Field(min_length=2, max_length=60)
+    # Login email; also where the weekly report is sent. Omitted = keep the current one.
+    email: Optional[EmailStr] = None
 
 
 class ResetPasswordIn(BaseModel):

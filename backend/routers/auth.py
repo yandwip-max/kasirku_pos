@@ -14,6 +14,7 @@ from lib.auth import (
     verify_password,
 )
 from lib.audit import diff_changes, log_activity
+from models.audit import ActivityChange
 from lib.db import db
 from models.auth import (
     CreateUserIn,
@@ -149,15 +150,35 @@ async def update_user(user_id: str, input: UpdateUserIn, principal: Principal = 
     user = await db.users.find_one({"id": user_id, "store_id": principal.store_id})
     if not user:
         raise HTTPException(status_code=404, detail="Pengguna tidak ditemukan")
-    await db.users.update_one({"id": user_id, "store_id": principal.store_id}, {"$set": {"name": name}})
-    await log_activity(
-        principal,
-        "user:rename",
-        summary=f"Mengubah nama pengguna dari \"{user.get('name', '')}\" menjadi \"{name}\"",
-        entity_name=user.get("email", ""),
-        category="akun",
-    )
-    return _user_out({**user, "name": name})
+
+    updates: dict = {"name": name}
+    new_email = str(input.email).strip().lower() if input.email else ""
+    if new_email and new_email != user.get("email", "").lower():
+        # email is the login identity, so it must stay unique across every store
+        taken = await db.users.find_one({"email": new_email, "id": {"$ne": user_id}})
+        if taken:
+            raise HTTPException(status_code=409, detail="Email ini sudah dipakai akun lain")
+        updates["email"] = new_email
+
+    await db.users.update_one({"id": user_id, "store_id": principal.store_id}, {"$set": updates})
+    if updates.get("email"):
+        await log_activity(
+            principal,
+            "user:rename",
+            summary=f"Mengubah email login akun {name} (laporan mingguan ikut pindah)",
+            entity_name=new_email,
+            changes=[ActivityChange(field="Email", before=user.get("email", "-"), after=new_email)],
+            category="akun",
+        )
+    if name != user.get("name"):
+        await log_activity(
+            principal,
+            "user:rename",
+            summary=f"Mengubah nama pengguna dari \"{user.get('name', '')}\" menjadi \"{name}\"",
+            entity_name=updates.get("email") or user.get("email", ""),
+            category="akun",
+        )
+    return _user_out({**user, **updates})
 
 
 @router.patch("/users/{user_id}/password", response_model=UserOut)

@@ -61,6 +61,8 @@ export interface CreateUserPayload {
 
 export interface UpdateUserPayload {
   name: string;
+  /** omit to keep the current login email */
+  email?: string;
 }
 
 export interface ResetPasswordPayload {
