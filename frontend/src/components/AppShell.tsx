@@ -17,6 +17,7 @@ import {
 import type { ReactNode } from "react";
 import { useAuth } from "@/lib/auth";
 import { useOfflineSync } from "@/hooks/useOfflineSync";
+import InstallAppButton from "@/components/InstallAppButton";
 import { formatRupiah } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,6 +77,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
+            <InstallAppButton />
             {/* Connectivity + offline queue */}
             <button
               type="button"

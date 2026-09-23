@@ -120,3 +120,7 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 ## Ubah email login pengguna
 - `PATCH /api/auth/users/{id}` sekarang menerima `{name, email?}` (UpdateUserIn). Email divalidasi EmailStr, di-lowercase, dan harus unik lintas toko (bentrok → 409). Perubahan email dicatat di Riwayat Aktivitas dengan nilai sebelum → sesudah.
 - UI: dialog **Edit Akun Pengguna** (tombol "Edit Akun" di /users) berisi Nama + Email Login. Untuk Pemilik ada catatan bahwa laporan mingguan dikirim ke email tersebut. Setelah diubah, login memakai email baru.
+
+## Pasang ke Layar Utama (PWA install)
+- Tombol **"Pasang di HP"** di header (`src/components/InstallAppButton.tsx`): memakai event `beforeinstallprompt` Chrome untuk memicu prompt instal native; bila event tak tersedia (iOS Safari / desktop) menampilkan dialog panduan langkah-langkah (iOS: Bagikan → Tambahkan ke Layar Utama). Tombol otomatis hilang saat aplikasi sudah berjalan standalone.
+- Manifest `public/manifest.webmanifest`: display standalone, 3 ikon (termasuk maskable), shortcuts Kasir & Laporan Harian.
