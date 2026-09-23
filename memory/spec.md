@@ -93,3 +93,15 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 - Field `stores.receipt_warranty` & `stores.receipt_thanks` (default: "Garansi resmi toko 7 hari…" / "Terima kasih telah berbelanja!").
 - Diedit di dialog **Edit Profil Toko** (halaman /users). Mengosongkan field = kembali ke teks bawaan. Batas 200 & 120 karakter (lebih dari itu → 422).
 - Dipakai di `ReceiptView.tsx` (tampilan + dialog cetak) dan `lib/escpos.ts` (RawBT/Bluetooth), jadi teks kustom ikut tercetak di printer 58mm.
+
+## Void / Retur Transaksi (khusus Pemilik, izin `transaction:void`)
+- `POST /api/transactions/{id}/void` body `{void_type: "void"|"retur", reason: >=3 char}`.
+- Transaksi TIDAK dihapus: `status="void"` + `void_type/void_reason/voided_by/voided_at`. Stok dikembalikan (unit IMEI → `in_stock`, produk qty `$inc`). Update `status` dilakukan atomik dulu agar double-void → 409.
+- Laporan (`/reports/summary`, `/reports/daily`) mengecualikan `status: "void"`; halaman Riwayat menandai baris dengan badge + alasan; aksi tercatat di Riwayat Aktivitas (kategori stok).
+- Kasir → 403. Transaksi tak ada → 404. Alasan < 3 karakter → 422.
+
+## Backup Data (khusus Pemilik)
+- `GET /api/backup/export` → snapshot JSON (products, product_units, transactions, activity_logs + counts), semua ter-scope `store_id`.
+- `GET /api/backup/csv/{products|units|transactions}` → CSV delimiter `;` + BOM UTF-8 (Excel ID). Dataset lain → 404.
+- UI: kartu **Backup Data Toko** di halaman /users; unduhan lewat fetch + blob karena butuh header bearer.
+- Catatan: daftar izin sisi klien (`PERMISSIONS_BY_ROLE` di `src/lib/auth.tsx`) HARUS ikut diperbarui saat menambah izin baru di `backend/lib/auth.py` — respons login tidak mengirim `permissions` (hanya `/auth/me`), jadi tombol bisa hilang bila lupa.

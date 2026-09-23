@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { KeyRound, Pencil, ShieldCheck, UserPlus } from "lucide-react";
 import { ResetPasswordDialog, StoreProfileCard } from "@/components/StoreSettings";
+import { BackupCard } from "@/components/DataTools";
 import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import type { CreateUserPayload, Role, UpdateUserPayload, User } from "@/lib/types";
@@ -162,6 +163,7 @@ export default function UsersPage() {
         </div>
 
         <StoreProfileCard />
+        <BackupCard />
 
         <Card>
           <CardContent className="p-0">

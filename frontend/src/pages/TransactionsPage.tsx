@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Search, Ban } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import type { Transaction } from "@/lib/types";
+import { useAuth } from "@/lib/auth";
+import { VoidTransactionDialog } from "@/components/DataTools";
 import { formatDateTime, formatRupiah } from "@/lib/format";
 import AppShell from "@/components/AppShell";
 import ReceiptDialog from "@/components/pos/ReceiptDialog";
@@ -38,6 +40,10 @@ export default function TransactionsPage() {
   const [method, setMethod] = useState<string>("");
   const [q, setQ] = useState("");
   const [detail, setDetail] = useState<Transaction | null>(null);
+  const [voidTarget, setVoidTarget] = useState<Transaction | null>(null);
+  const { permissions, isOwner } = useAuth();
+  // isOwner covers the boot window before /auth/me hands back the permission list
+  const canVoid = isOwner || permissions.includes("transaction:void");
 
   const txQuery = useQuery({
     queryKey: ["transactions", { period, method, q }],
@@ -134,8 +140,19 @@ export default function TransactionsPage() {
                     </TableRow>
                   ))}
                 {rows.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell className="font-mono text-xs font-semibold">{t.transaction_number}</TableCell>
+                  <TableRow key={t.id} className={cn(t.status === "void" && "bg-rose-50/50")} data-testid="transaction-row">
+                    <TableCell className="font-mono text-xs font-semibold">
+                      {t.transaction_number}
+                      {t.status === "void" && (
+                        <Badge
+                          variant="outline"
+                          className="ml-1 border-rose-200 bg-rose-50 text-rose-700"
+                          data-testid="transaction-void-badge"
+                        >
+                          {t.void_type === "retur" ? "Retur" : "Dibatalkan"}
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm text-slate-600">{formatDateTime(t.created_at)}</TableCell>
                     <TableCell className="max-w-56 truncate text-sm">{itemsSummary(t)}</TableCell>
                     <TableCell>
@@ -152,17 +169,37 @@ export default function TransactionsPage() {
                     </TableCell>
                     <TableCell className="text-sm">{t.customer_name || "-"}</TableCell>
                     <TableCell className="text-right font-mono text-sm font-bold">
-                      {formatRupiah(t.total)}
+                      <span className={cn(t.status === "void" && "text-slate-400 line-through")}>
+                        {formatRupiah(t.total)}
+                      </span>
                       {t.discount_total > 0 ? (
                         <span className="block text-[11px] font-normal text-emerald-700" data-testid="transaction-row-discount">
                           Diskon −{formatRupiah(t.discount_total)}
                         </span>
                       ) : null}
+                      {t.status === "void" && t.void_reason ? (
+                        <span className="block text-[11px] font-normal text-rose-600" data-testid="transaction-void-reason">
+                          {t.void_reason} · oleh {t.voided_by}
+                        </span>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="outline" size="sm" data-testid="transaction-detail-btn" onClick={() => setDetail(t)}>
-                        Detail
-                      </Button>
+                      <div className="flex justify-end gap-1.5">
+                        <Button variant="outline" size="sm" data-testid="transaction-detail-btn" onClick={() => setDetail(t)}>
+                          Detail
+                        </Button>
+                        {canVoid && t.status !== "void" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                            data-testid="transaction-void-btn"
+                            onClick={() => setVoidTarget(t)}
+                          >
+                            <Ban className="h-3.5 w-3.5" /> Batalkan
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -185,6 +222,8 @@ export default function TransactionsPage() {
         onOpenChange={(open) => !open && setDetail(null)}
         printTestId="transaction-reprint-btn"
       />
+
+      <VoidTransactionDialog transaction={voidTarget} onOpenChange={(open) => !open && setVoidTarget(null)} />
     </AppShell>
   );
 }

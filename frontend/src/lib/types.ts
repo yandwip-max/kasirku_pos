@@ -148,6 +148,12 @@ export interface Transaction {
   cashier_name: string;
   client_ref: string | null;
   created_at: string;
+  /** void/retur bookkeeping — legacy rows are "selesai" */
+  status: "selesai" | "void";
+  void_type: "void" | "retur" | null;
+  void_reason: string;
+  voided_by: string;
+  voided_at: string | null;
 }
 
 export interface CartLine {
@@ -276,4 +282,11 @@ export interface ActivityPage {
   total: number;
   has_more: boolean;
   next_skip: number | null;
+}
+
+/* ── Void / Retur transaksi & Backup data ── */
+
+export interface VoidPayload {
+  void_type: "void" | "retur";
+  reason: string;
 }

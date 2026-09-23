@@ -71,6 +71,7 @@ PERMISSIONS: dict[str, set[str]] = {
         "transaction:read",
         "report:read",
         "user:manage",
+        "transaction:void",
         "cost:read",  # harga modal & laba
     },
     "kasir": {

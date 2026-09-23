@@ -19,6 +19,7 @@ ActivityAction = Literal[
     "product:delete",
     "unit:add",
     "unit:delete",
+    "transaction:void",
     "user:create",
     "user:rename",
     "user:password",

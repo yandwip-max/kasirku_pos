@@ -34,7 +34,9 @@ async def report_summary(
 ):
     days = max(1, min(days, 365))
     now = datetime.now(timezone.utc)
-    docs = await repo.find("transactions", {"created_at": {"$gte": now - timedelta(days=days)}}).to_list(10000)
+    docs = await repo.find(
+        "transactions", {"created_at": {"$gte": now - timedelta(days=days)}, "status": {"$ne": "void"}}
+    ).to_list(10000)
 
     total_revenue = 0
     total_profit = 0
@@ -92,7 +94,9 @@ async def daily_report(
     on each transaction item, so later price edits never rewrite past days."""
     days = max(1, min(days, 365))
     now = datetime.now(timezone.utc)
-    docs = await repo.find("transactions", {"created_at": {"$gte": now - timedelta(days=days)}}).to_list(10000)
+    docs = await repo.find(
+        "transactions", {"created_at": {"$gte": now - timedelta(days=days)}, "status": {"$ne": "void"}}
+    ).to_list(10000)
 
     buckets: dict[str, dict] = {}
     for doc in docs:

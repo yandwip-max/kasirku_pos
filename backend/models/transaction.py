@@ -57,6 +57,13 @@ class TransactionItemOut(BaseModel):
     subtotal: int  # qty * price - discount
 
 
+class VoidIn(BaseModel):
+    """Cancel or return a recorded sale. Stock goes back; the record is kept for audit."""
+
+    void_type: Literal["void", "retur"] = "void"
+    reason: str = Field(min_length=3, max_length=200)
+
+
 class Transaction(BaseModel):
     id: str = Field(default_factory=_uuid)
     store_id: str = ""
@@ -74,3 +81,9 @@ class Transaction(BaseModel):
     cashier_name: str = "Kasir"
     client_ref: Optional[str] = None
     created_at: datetime = Field(default_factory=_now)
+    # Void/retur bookkeeping — "selesai" is the normal state, legacy rows default to it.
+    status: Literal["selesai", "void"] = "selesai"
+    void_type: Optional[Literal["void", "retur"]] = None
+    void_reason: str = ""
+    voided_by: str = ""
+    voided_at: Optional[datetime] = None

@@ -44,7 +44,7 @@ function writeCachedSession(value: { user: User; store: Store; permissions: stri
 }
 
 const PERMISSIONS_BY_ROLE: Record<string, string[]> = {
-  pemilik: ["product:read", "product:write", "transaction:create", "transaction:read", "report:read", "user:manage", "cost:read"],
+  pemilik: ["product:read", "product:write", "transaction:create", "transaction:read", "transaction:void", "report:read", "user:manage", "cost:read"],
   kasir: ["product:read", "transaction:create", "transaction:read"],
 };
 

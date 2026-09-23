@@ -70,7 +70,7 @@ def category_for(action: str, changed_fields: Iterable[str] = ()) -> str:
         return "akun"
     if action == "store:update":
         return "toko"
-    if action in ("unit:add", "unit:delete"):
+    if action in ("unit:add", "unit:delete", "transaction:void"):
         return "stok"
     if fields & PRICE_FIELDS:
         return "harga"

@@ -64,6 +64,11 @@ function offlineReceipt(cart: CartLine[], payload: CheckoutPayload, cashierName:
     cashier_name: cashierName,
     client_ref: payload.client_ref ?? null,
     created_at: payload.offline_created_at ?? new Date().toISOString(),
+    status: "selesai",
+    void_type: null,
+    void_reason: "",
+    voided_by: "",
+    voided_at: null,
   };
 }
 

@@ -6,9 +6,10 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from lib.audit import log_activity
 from lib.auth import Principal, mask_cost, require
 from lib.scoped import ScopedRepo, scoped_repo
-from models.transaction import CartItemIn, CheckoutIn, Transaction, TransactionItemOut
+from models.transaction import CartItemIn, CheckoutIn, Transaction, TransactionItemOut, VoidIn
 
 router = APIRouter(prefix="/transactions")
 WIB = ZoneInfo("Asia/Jakarta")
@@ -35,6 +36,10 @@ def _trx_out(doc: dict, principal: Principal) -> Transaction:
             "discount_total": doc.get("discount_total", 0),
             "created_at": _aware(doc["created_at"]),
             "profit": mask_cost(principal, doc.get("profit", 0)),
+            "status": doc.get("status") or "selesai",
+            "void_reason": doc.get("void_reason", ""),
+            "voided_by": doc.get("voided_by", ""),
+            "voided_at": _aware(doc["voided_at"]) if doc.get("voided_at") else None,
         }
     )
 
@@ -257,3 +262,64 @@ async def create_transaction(
     )
     await repo.insert_one("transactions", trx.model_dump(exclude={"store_id"}))
     return _trx_out(trx.model_dump(), principal)
+
+
+@router.post("/{transaction_id}/void", response_model=Transaction)
+async def void_transaction(
+    transaction_id: str,
+    input: VoidIn,
+    principal: Principal = Depends(require("transaction:void")),
+    repo: ScopedRepo = Depends(scoped_repo),
+):
+    """Cancel (void) or return (retur) a sale: stock goes back, the record stays.
+
+    The transaction is never deleted — reports skip voided rows, and the audit trail keeps
+    who cancelled it and why.
+    """
+    doc = await repo.find_one("transactions", {"id": transaction_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
+    if (doc.get("status") or "selesai") == "void":
+        raise HTTPException(status_code=409, detail="Transaksi ini sudah dibatalkan sebelumnya")
+
+    now = datetime.now(timezone.utc)
+    # Flag first: a matched update guarantees only one void wins if two owners click at once.
+    claimed = await repo.update_one(
+        "transactions",
+        {"id": transaction_id, "status": {"$ne": "void"}},
+        {
+            "$set": {
+                "status": "void",
+                "void_type": input.void_type,
+                "void_reason": input.reason.strip(),
+                "voided_by": principal.name,
+                "voided_at": now,
+            }
+        },
+    )
+    if claimed.matched_count == 0:
+        raise HTTPException(status_code=409, detail="Transaksi ini sudah dibatalkan sebelumnya")
+
+    # Then return the goods to stock: IMEI units become sellable again, quantities go up.
+    for item in doc["items"]:
+        if item.get("unit_id"):
+            await repo.update_one(
+                "product_units",
+                {"id": item["unit_id"]},
+                {"$set": {"status": "in_stock", "sold_at": None, "transaction_id": None}},
+            )
+        else:
+            await repo.update_one("products", {"id": item["product_id"]}, {"$inc": {"stock_qty": item["qty"]}})
+
+    label = "Retur" if input.void_type == "retur" else "Void"
+    await log_activity(
+        principal,
+        "transaction:void",
+        summary=f"{label} transaksi {doc['transaction_number']} ({doc['total']:,}".replace(",", ".")
+        + f") — alasan: {input.reason.strip()}. Stok dikembalikan.",
+        entity_name=doc["transaction_number"],
+        category="stok",
+    )
+
+    updated = await repo.find_one("transactions", {"id": transaction_id})
+    return _trx_out(updated or doc, principal)
