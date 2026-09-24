@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { FolderTree, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import type { Product, ProductPayload, ProductType, ProductUnit } from "@/lib/types";
 import { formatDateTime, formatRupiah, formatThousands, parseRupiah } from "@/lib/format";
 import AppShell from "@/components/AppShell";
+import CategoryManager, { useCategories } from "@/components/CategoryManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -132,6 +133,7 @@ function ProductFormDialog({
 }) {
   const [form, setForm] = useState<FormState>(product ? productToForm(product) : emptyForm());
   const queryClient = useQueryClient();
+  const folderNames = (useCategories().data ?? []).map((c) => c.name);
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const save = useMutation({
@@ -209,22 +211,21 @@ function ProductFormDialog({
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label>Kategori</Label>
+              <Label>Folder / Kategori</Label>
               <Select
                 value={form.category}
-                disabled={form.type !== "aksesoris"}
+                disabled={form.type === "handphone"}
                 onValueChange={(value) => set("category", value)}
               >
                 <SelectTrigger data-testid="product-category-select">
-                  <SelectValue>{(value: string | null) => (value ? value : "Pilih kategori")}</SelectValue>
+                  <SelectValue>{(value: string | null) => (value ? value : "Pilih folder")}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {form.type === "handphone" ? (
                     <SelectItem value="Handphone">Handphone</SelectItem>
-                  ) : form.type === "voucher" ? (
-                    <SelectItem value="Voucher & Pulsa">Voucher &amp; Pulsa</SelectItem>
                   ) : (
-                    ACCESSORY_CATEGORIES.map((c) => (
+                    // shop-defined folders first, then the built-in accessory groups
+                    [...folderNames, ...ACCESSORY_CATEGORIES.filter((c) => !folderNames.includes(c))].map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
                       </SelectItem>
@@ -567,6 +568,9 @@ function DeleteProductDialog({
 export default function ProductsPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"" | ProductType>("");
+  const [folderFilter, setFolderFilter] = useState("");
+  const folders = useCategories().data ?? [];
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [lowStock, setLowStock] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [formProduct, setFormProduct] = useState<Product | null>(null);
@@ -575,11 +579,12 @@ export default function ProductsPage() {
   const queryClient = useQueryClient();
 
   const productsQuery = useQuery({
-    queryKey: ["products", { search, typeFilter, lowStock }],
+    queryKey: ["products", { search, typeFilter, lowStock, folderFilter }],
     queryFn: () => {
       const params = new URLSearchParams();
       if (search.trim()) params.set("search", search.trim());
       if (typeFilter) params.set("type", typeFilter);
+      if (folderFilter) params.set("category", folderFilter);
       if (lowStock) params.set("low_stock", "true");
       return apiGet<Product[]>(`/products?${params.toString()}`);
     },
@@ -615,6 +620,14 @@ export default function ProductsPage() {
             }}
           >
             <Plus className="h-4 w-4" /> Tambah Produk
+          </Button>
+          <Button
+            variant="outline"
+            data-testid="manage-categories-btn"
+            className="active:scale-[0.98] transition-transform duration-100"
+            onClick={() => setCategoryManagerOpen(true)}
+          >
+            <FolderTree className="h-4 w-4" /> Kelola Folder
           </Button>
         </div>
 
@@ -652,6 +665,41 @@ export default function ProductsPage() {
               <Checkbox checked={lowStock} onCheckedChange={(v) => setLowStock(v === true)} data-testid="product-low-stock-checkbox" />
               Hanya stok menipis
             </Label>
+
+            {folders.length > 0 && (
+              <div className="flex w-full flex-wrap items-center gap-1 border-t pt-2.5" data-testid="folder-filter-row">
+                <span className="mr-1 text-xs font-medium text-slate-500">Folder:</span>
+                <button
+                  type="button"
+                  data-testid="folder-filter-all"
+                  onClick={() => setFolderFilter("")}
+                  className={cn(
+                    "rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-100 active:scale-[0.98]",
+                    folderFilter === ""
+                      ? "border-sky-600 bg-[#0284C7] text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                  )}
+                >
+                  Semua Folder
+                </button>
+                {folders.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    data-testid="folder-filter-chip"
+                    onClick={() => setFolderFilter(f.name)}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs font-medium transition-colors duration-100 active:scale-[0.98]",
+                      folderFilter === f.name
+                        ? "border-sky-600 bg-[#0284C7] text-white"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                    )}
+                  >
+                    {f.name} <span className="opacity-60">({f.product_count})</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -768,6 +816,7 @@ export default function ProductsPage() {
       </div>
 
       <ProductFormDialog key={formProduct?.id ?? "new"} open={formOpen} onOpenChange={setFormOpen} product={formProduct} />
+      <CategoryManager open={categoryManagerOpen} onOpenChange={setCategoryManagerOpen} />
       <UnitManagerDialog
         key={unitProduct?.id ?? "none"}
         product={unitProduct}

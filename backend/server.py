@@ -25,6 +25,7 @@ from routers.reports import router as reports_router
 from routers.audit import router as audit_router
 from routers.backup import router as backup_router
 from routers.cron import router as cron_router
+from routers.categories import router as categories_router
 
 
 # Startup runs before the yield, shutdown after it. Add your own setup/teardown here.
@@ -76,6 +77,7 @@ api_router.include_router(reports_router)
 api_router.include_router(audit_router)
 api_router.include_router(backup_router)
 api_router.include_router(cron_router)
+api_router.include_router(categories_router)
 
 # Include the router in the main app
 app.include_router(api_router)

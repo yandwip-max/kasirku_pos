@@ -47,6 +47,9 @@ class ScopedRepo:
     async def find_one_and_update(self, collection: str, query: Mapping[str, Any], update: Mapping[str, Any], **kwargs):
         return await db[collection].find_one_and_update(self._filter(query), update, **kwargs)
 
+    async def update_many(self, collection: str, query: Mapping[str, Any], update: Mapping[str, Any]):
+        return await db[collection].update_many(self._filter(query), update)
+
     async def delete_one(self, collection: str, query: Mapping[str, Any]):
         return await db[collection].delete_one(self._filter(query))
 

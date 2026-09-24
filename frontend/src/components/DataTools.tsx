@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Ban, Download, FileSpreadsheet, HardDriveDownload, Undo2 } from "lucide-react";
+import { Ban, Download, FileSpreadsheet, HardDriveDownload, MailCheck, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { apiPost, getToken } from "@/lib/api";
 import type { Transaction, VoidPayload } from "@/lib/types";
@@ -129,6 +129,21 @@ const BACKUPS = [
 
 export function BackupCard() {
   const [busy, setBusy] = useState<string | null>(null);
+  const [sendingTest, setSendingTest] = useState(false);
+
+  /** Sends the weekly recap to the logged-in owner's own email — no recipient input. */
+  async function sendTestReport() {
+    setSendingTest(true);
+    try {
+      const res = await apiPost<{ status: string; to: string }>("/backup/send-report-now");
+      toast.success(`Email uji terkirim ke ${res.to}. Cek inbox (dan folder spam).`);
+    } catch (err) {
+      const detail = (err as { body?: { detail?: string } })?.body?.detail;
+      toast.error(detail ?? "Gagal mengirim email uji. Coba lagi sebentar.");
+    } finally {
+      setSendingTest(false);
+    }
+  }
 
   /** The export endpoints need the bearer token, so the file is fetched then saved via a blob. */
   async function download(path: string, label: string) {
@@ -195,6 +210,17 @@ export function BackupCard() {
           produk terlaris, dan peringatan stok menipis dikirim ke email akun Pemilik toko ini — tanpa perlu klik. Untuk
           arsip data, unduh cadangan di atas secara berkala.
         </p>
+
+        <Button
+          variant="outline"
+          className="w-full justify-center transition-transform duration-100 active:scale-[0.99] sm:w-auto"
+          disabled={sendingTest}
+          data-testid="send-test-report-btn"
+          onClick={sendTestReport}
+        >
+          <MailCheck className="h-4 w-4 text-[#0284C7]" />
+          {sendingTest ? "Mengirim email uji…" : "Kirim laporan uji sekarang"}
+        </Button>
       </CardContent>
     </Card>
   );

@@ -297,3 +297,16 @@ export interface VoidPayload {
   void_type: "void" | "retur";
   reason: string;
 }
+
+/* ── Folder produk (kategori buatan toko) ── */
+
+export interface Category {
+  id: string;
+  name: string;
+  product_count: number;
+  created_at: string;
+}
+
+export interface CategoryPayload {
+  name: string;
+}

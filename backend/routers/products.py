@@ -40,6 +40,7 @@ def _unit_out(doc: dict, principal: Principal) -> ProductUnit:
 async def list_products(
     search: str = "",
     type: str = "",
+    category: str = "",
     low_stock: bool = False,
     principal: Principal = Depends(require("product:read")),
     repo: ScopedRepo = Depends(scoped_repo),
@@ -59,6 +60,9 @@ async def list_products(
         ]
     if type in ("handphone", "aksesoris", "voucher"):
         query["type"] = type
+    if category.strip():
+        # folder filter, case-insensitive so chips match however the folder was typed
+        query["category"] = {"$regex": f"^{re.escape(category.strip())}$", "$options": "i"}
 
     docs = await repo.find("products", query).sort([("type", DESCENDING), ("name", 1)]).to_list(1000)
 
@@ -91,7 +95,11 @@ async def create_product(
 ):
     if input.type == "handphone":
         input.stock_qty = 0  # stock is tracked as serialized units
-    doc = Product(**input.model_dump(), store_id=principal.store_id)
+    # one product name per store: a duplicate would split stock across two rows
+    clash = await repo.find_one("products", {"name": {"$regex": f"^{re.escape(input.name.strip())}$", "$options": "i"}})
+    if clash:
+        raise HTTPException(status_code=409, detail=f'Produk "{input.name.strip()}" sudah ada di daftar produk')
+    doc = Product(**{**input.model_dump(), "name": input.name.strip()}, store_id=principal.store_id)
     await repo.insert_one("products", doc.model_dump(exclude={"store_id"}))
     await log_activity(
         principal,
@@ -115,6 +123,15 @@ async def update_product(
         raise HTTPException(status_code=400, detail="Tidak ada perubahan")
     updates.pop("type", None)  # type is immutable once created
     updates.pop("store_id", None)  # never reassign a product to another store
+    if updates.get("name"):
+        name = str(updates["name"]).strip()
+        clash = await repo.find_one(
+            "products",
+            {"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}, "id": {"$ne": product_id}},
+        )
+        if clash:
+            raise HTTPException(status_code=409, detail=f'Produk "{name}" sudah ada di daftar produk')
+        updates["name"] = name
     before = await repo.find_one("products", {"id": product_id})
     res = await repo.find_one_and_update(
         "products", {"id": product_id}, {"$set": updates}, return_document=ReturnDocument.AFTER

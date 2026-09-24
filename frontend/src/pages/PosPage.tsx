@@ -10,6 +10,7 @@ import { enqueueSale, newClientRef, pendingLinesFromCart } from "@/lib/offlineQu
 import type { CartLine, CheckoutPayload, DiscountType, PriceTier, Product, ProductUnit, Transaction } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import ProductGrid from "@/components/pos/ProductGrid";
+import { useCategories } from "@/components/CategoryManager";
 import LowStockAlert from "@/components/pos/LowStockAlert";
 import ImeiUnitDialog from "@/components/pos/ImeiUnitDialog";
 import CartPanel from "@/components/pos/CartPanel";
@@ -76,6 +77,8 @@ export default function PosPage() {
   const { user, store } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<CategoryId>("all");
+  const [folder, setFolder] = useState("");
+  const folders = useCategories().data ?? [];
   const [cart, setCart] = useState<CartLine[]>([]);
   const [imeiProduct, setImeiProduct] = useState<Product | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -86,13 +89,14 @@ export default function PosPage() {
   const queryClient = useQueryClient();
 
   const productsQuery = useQuery({
-    queryKey: ["products", { search, category }],
+    queryKey: ["products", { search, category, folder }],
     queryFn: () => {
       const params = new URLSearchParams();
       if (search.trim()) params.set("search", search.trim());
       if (category === "handphone") params.set("type", "handphone");
       if (category === "accessories") params.set("type", "aksesoris");
       if (category === "voucher") params.set("type", "voucher");
+      if (folder) params.set("category", folder);
       return apiGet<Product[]>(`/products?${params.toString()}`);
     },
   });
@@ -238,15 +242,38 @@ export default function PosPage() {
                   key={c.id}
                   type="button"
                   data-testid={c.testid}
-                  onClick={() => setCategory(c.id)}
+                  onClick={() => {
+                    setCategory(c.id);
+                    setFolder("");
+                  }}
                   className={cn(
                     "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-100 active:scale-[0.98]",
-                    category === c.id
+                    category === c.id && folder === ""
                       ? "border-sky-600 bg-[#0284C7] text-white"
                       : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
                   )}
                 >
                   {c.label}
+                </button>
+              ))}
+              {/* shop-defined folders (CCTV, Sparepart, Parfum, …) */}
+              {folders.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  data-testid="pos-folder-filter-chip"
+                  onClick={() => {
+                    setCategory("all");
+                    setFolder(f.name);
+                  }}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-100 active:scale-[0.98]",
+                    folder === f.name
+                      ? "border-sky-600 bg-[#0284C7] text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                  )}
+                >
+                  {f.name}
                 </button>
               ))}
             </div>

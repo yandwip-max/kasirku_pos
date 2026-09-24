@@ -124,3 +124,11 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 ## Pasang ke Layar Utama (PWA install)
 - Tombol **"Pasang di HP"** di header (`src/components/InstallAppButton.tsx`): memakai event `beforeinstallprompt` Chrome untuk memicu prompt instal native; bila event tak tersedia (iOS Safari / desktop) menampilkan dialog panduan langkah-langkah (iOS: Bagikan → Tambahkan ke Layar Utama). Tombol otomatis hilang saat aplikasi sudah berjalan standalone.
 - Manifest `public/manifest.webmanifest`: display standalone, 3 ikon (termasuk maskable), shortcuts Kasir & Laporan Harian.
+
+## Folder Produk (kategori buatan toko)
+- Koleksi `categories` {id, store_id, name, created_at}; nama unik per toko (case-insensitive).
+- `GET /api/categories` (izin product:read, mengembalikan `product_count`), `POST` / `PATCH /{id}` / `DELETE /{id}` (izin product:write → Kasir 403).
+- Nama 2–40 karakter; duplikat → 409; hapus folder yang masih berisi produk → 409 dengan pesan "pindahkan produknya dulu"; ganti nama otomatis memindahkan semua produk di folder itu (`update_many`).
+- `GET /api/products?category=<nama>` memfilter per folder (case-insensitive). Produk di folder dihitung per jumlah stok; IMEI tetap khusus handphone.
+- Anti-duplikat produk: `POST /api/products` dan `PATCH /api/products/{id}` menolak nama produk yang sama (case-insensitive) dalam satu toko → 409.
+- UI: tombol **Kelola Folder** + baris chip "Folder:" di /products (`src/components/CategoryManager.tsx`), chip folder juga muncul di halaman Kasir, dan dropdown Folder/Kategori di form produk memakai folder toko.

@@ -6,14 +6,17 @@ Owner-only and always store-scoped — a backup must never leak another tenant's
 import csv
 import io
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from lib.auth import Principal, require
 from lib.dates import today_iso
+from lib.db import db
 from lib.scoped import ScopedRepo, scoped_repo
+from routers.cron import WIB, _recap_html, _store_recap
+from lib.email import send_email
 
 router = APIRouter(prefix="/backup")
 
@@ -65,7 +68,48 @@ async def export_json(
     )
 
 
-@router.get("/csv/{dataset}")
+@router.post("/send-report-now")
+async def send_report_now(principal: Principal = Depends(require("user:manage"))):
+    """Send this owner their own weekly recap right now — a self-test for the email setup.
+
+    The recipient is always the caller's stored email and the body is the same
+    server-side template the cron uses; nothing here is caller-supplied.
+    """
+    user = await db.users.find_one({"id": principal.user_id, "store_id": principal.store_id})
+    store = await db.stores.find_one({"id": principal.store_id})
+    if not user or not store or not user.get("email"):
+        raise HTTPException(status_code=404, detail="Akun atau toko tidak ditemukan")
+
+    # light rate limit: one test email per account every 2 minutes
+    last = await db.email_tests.find_one({"user_id": principal.user_id})
+    now = datetime.now(timezone.utc)
+    if last and (now - last["sent_at"].replace(tzinfo=timezone.utc)) < timedelta(minutes=2):
+        raise HTTPException(status_code=429, detail="Tunggu 2 menit sebelum mengirim email uji lagi")
+
+    now_wib = datetime.now(WIB)
+    period = f"{(now_wib - timedelta(days=6)).strftime('%d %b')} – {now_wib.strftime('%d %b %Y')}"
+    recap = await _store_recap(principal.store_id)
+    email_id = await send_email(
+        to=user["email"],
+        subject=f"[Uji kirim] Laporan mingguan {store.get('name', 'toko Anda')} — {period}",
+        html=_recap_html(store.get("name", "Toko"), user.get("name", "Pemilik"), recap, period),
+    )
+    if not email_id:
+        # 400, not 502: the CDN replaces upstream 5xx bodies with its own error page,
+        # which would hide this message from the user.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Email gagal dikirim ke {user['email']}. Pastikan alamatnya aktif dan benar "
+                "(email contoh seperti @demo.id ditolak penyedia email)."
+            ),
+        )
+
+    await db.email_tests.update_one(
+        {"user_id": principal.user_id}, {"$set": {"sent_at": now, "email": user["email"]}}, upsert=True
+    )
+    return {"status": "sent", "to": user["email"], "email_id": email_id}
+
 async def export_csv(
     dataset: str,
     principal: Principal = Depends(require("user:manage")),
