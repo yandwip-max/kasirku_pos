@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Ban, X } from "lucide-react";
+import { Search, Ban, X, FileSpreadsheet } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import type { Transaction, TransactionRangeReport } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { VoidTransactionDialog } from "@/components/DataTools";
 import { formatDateShort, formatDateTime, formatRupiah } from "@/lib/format";
+import { downloadFile } from "@/lib/download";
+import { toast } from "sonner";
 import AppShell from "@/components/AppShell";
 import ReceiptDialog from "@/components/pos/ReceiptDialog";
 import { Badge } from "@/components/ui/badge";
@@ -98,6 +100,24 @@ export default function TransactionsPage() {  const [period, setPeriod] = useSta
     },
   });
   const report = reportQuery.data;
+  const [downloading, setDownloading] = useState(false);
+
+  /** Excel of the active range: a totals sheet plus one row per sale. */
+  async function exportRange() {
+    setDownloading(true);
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.set("start", startDate);
+      if (endDate) params.set("end", endDate);
+      if (method) params.set("method", method);
+      await downloadFile(`/api/transactions/report/xlsx?${params.toString()}`, "kasirku-transaksi.xlsx");
+      toast.success("Laporan Excel berhasil diunduh");
+    } catch {
+      toast.error("Gagal mengunduh laporan. Pastikan Anda sedang online.");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <AppShell>
@@ -219,6 +239,17 @@ export default function TransactionsPage() {  const [period, setPeriod] = useSta
                   {report.transaction_count} transaksi · {report.items_sold} item terjual
                   {report.void_count > 0 ? ` · ${report.void_count} dibatalkan (tidak dihitung)` : ""}
                 </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={downloading}
+                  data-testid="range-export-xlsx-btn"
+                  className="transition-transform duration-100 active:scale-[0.98]"
+                  onClick={exportRange}
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-[#0284C7]" />
+                  {downloading ? "Menyiapkan…" : "Unduh Excel"}
+                </Button>
               </div>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
                 <RangeStat label="Omzet" value={formatRupiah(report.total_revenue)} testid="range-revenue" />

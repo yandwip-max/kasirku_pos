@@ -1,10 +1,13 @@
+import io
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 
 from lib.audit import log_activity
 from lib.auth import Principal, mask_cost, require
@@ -161,6 +164,97 @@ async def transactions_range_report(
             report.qris_total += doc["total"]
     report.total_profit = report.total_revenue - report.total_cogs
     return report
+
+
+@router.get("/report/xlsx")
+async def export_range_xlsx(
+    start: str = "",
+    end: str = "",
+    method: str = "",
+    principal: Principal = Depends(require("report:read")),
+    repo: ScopedRepo = Depends(scoped_repo),
+):
+    """Excel workbook for the selected range: a totals sheet plus one row per sale."""
+    query: dict = {}
+    if start or end:
+        query["created_at"] = _range_filter(start, end)
+    if method in ("tunai", "qris"):
+        query["payment_method"] = method
+
+    docs = await repo.find("transactions", query).sort("created_at", -1).to_list(20000)
+
+    rows = []
+    revenue = cogs = discount = items_sold = cash = qris = voided = 0
+    for doc in docs:
+        is_void = (doc.get("status") or "selesai") == "void"
+        doc_cogs = sum(int(i.get("cost") or 0) * i["qty"] for i in doc["items"])
+        created = doc["created_at"]
+        created = created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+        rows.append(
+            {
+                "No. Struk": doc["transaction_number"],
+                "Tanggal": created.astimezone(WIB).strftime("%d/%m/%Y %H:%M"),
+                "Status": "Dibatalkan" if is_void else "Selesai",
+                "Kasir": doc.get("cashier_name", ""),
+                "Pembeli": doc.get("customer_name") or "-",
+                "Pembayaran": "Tunai" if doc["payment_method"] == "tunai" else "QRIS",
+                "Subtotal": doc.get("gross_total", doc["total"]),
+                "Diskon": doc.get("discount_total", 0),
+                "Total": doc["total"],
+                "Modal (HPP)": doc_cogs,
+                "Laba": doc["total"] - doc_cogs,
+                "Rincian Barang": "\n".join(
+                    f"{i.get('product_name')} x{i.get('qty')} @{i.get('price')}"
+                    + (f" (IMEI {i['imei']})" if i.get("imei") else "")
+                    for i in doc["items"]
+                ),
+                "Alasan Pembatalan": doc.get("void_reason", ""),
+            }
+        )
+        if is_void:
+            voided += 1
+            continue
+        revenue += doc["total"]
+        cogs += doc_cogs
+        discount += doc.get("discount_total", 0)
+        items_sold += sum(i["qty"] for i in doc["items"])
+        if doc["payment_method"] == "tunai":
+            cash += doc["total"]
+        else:
+            qris += doc["total"]
+
+    summary = pd.DataFrame(
+        [
+            {"Keterangan": "Periode", "Nilai": f"{start or 'awal'} s/d {end or 'hari ini'}"},
+            {"Keterangan": "Jumlah transaksi", "Nilai": len(rows) - voided},
+            {"Keterangan": "Transaksi dibatalkan", "Nilai": voided},
+            {"Keterangan": "Item terjual", "Nilai": items_sold},
+            {"Keterangan": "Omzet", "Nilai": revenue},
+            {"Keterangan": "Modal / HPP", "Nilai": cogs},
+            {"Keterangan": "Keuntungan", "Nilai": revenue - cogs},
+            {"Keterangan": "Total diskon", "Nilai": discount},
+            {"Keterangan": "Tunai", "Nilai": cash},
+            {"Keterangan": "QRIS", "Nilai": qris},
+        ]
+    )
+    detail = pd.DataFrame(rows)
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        summary.to_excel(writer, index=False, sheet_name="Ringkasan")
+        detail.to_excel(writer, index=False, sheet_name="Transaksi", freeze_panes=(1, 0))
+        for name, frame in (("Ringkasan", summary), ("Transaksi", detail)):
+            sheet = writer.sheets[name]
+            for index, header in enumerate(frame.columns, start=1):
+                widest = max([len(str(header))] + [len(str(v)[:40]) for v in frame[header].head(200)] or [0])
+                sheet.column_dimensions[sheet.cell(row=1, column=index).column_letter].width = min(widest + 3, 42)
+
+    label = f"{start or 'awal'}_{end or 'kini'}"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="kasirku-transaksi-{label}.xlsx"'},
+    )
 
 
 @router.post("", response_model=Transaction, status_code=201)

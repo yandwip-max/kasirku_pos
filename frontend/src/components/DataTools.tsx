@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Ban, Download, FileSpreadsheet, HardDriveDownload, MailCheck, Undo2 } from "lucide-react";
 import { toast } from "sonner";
-import { apiPost, getToken } from "@/lib/api";
+import { apiPost } from "@/lib/api";
+import { downloadFile } from "@/lib/download";
 import type { Transaction, VoidPayload } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -149,18 +150,7 @@ export function BackupCard() {
   async function download(path: string, label: string) {
     setBusy(path);
     try {
-      const res = await fetch(path, { headers: { Authorization: `Bearer ${getToken() ?? ""}` } });
-      if (!res.ok) throw new Error(`gagal (${res.status})`);
-      const blob = await res.blob();
-      const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "kasirku-backup";
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = name;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      await downloadFile(path, "kasirku-backup");
       toast.success(`${label} berhasil diunduh`);
     } catch {
       toast.error(`Gagal mengunduh ${label}. Pastikan Anda sedang online.`);
