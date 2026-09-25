@@ -141,3 +141,9 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 - CSV `;` membuat semua kolom menumpuk di satu sel pada Excel/WPS Android, jadi ekspor diganti ke **.xlsx** asli via pandas + openpyxl.
 - `GET /api/backup/xlsx/{products|units|transactions}` (izin user:manage). Header berbahasa Indonesia, label status/tipe/pembayaran dimanusiakan, tanggal diformat dd/mm/yyyy HH:MM WIB, lebar kolom otomatis, baris header dibekukan. Dataset `units` ikut menyertakan Nama Produk (di-join dari products).
 - Rute `/api/backup/csv/...` DIHAPUS (404). JSON snapshot `/api/backup/export` tetap ada.
+
+## Laporan transaksi per rentang tanggal
+- `GET /api/transactions?start=YYYY-MM-DD&end=YYYY-MM-DD` (inklusif, dihitung di zona WIB oleh server). Rentang mengalahkan parameter `period`.
+- `GET /api/transactions/report?start=&end=&method=` (izin `report:read`, Kasir 403) → `TransactionRangeReport`: transaction_count, void_count, total_revenue, total_cogs, total_profit, total_discount, items_sold, cash_total, qris_total. Transaksi void dihitung di `void_count` saja, tidak masuk uang.
+- Validasi: format bukan YYYY-MM-DD → 422; tanggal awal melewati akhir → 400.
+- UI: pemilih "Dari tanggal"/"Sampai tanggal" + tombol "Hapus rentang" di halaman Riwayat, dan kartu ringkasan 6 KPI (`transaction-range-report`) yang hanya tampil untuk Pemilik saat rentang aktif.

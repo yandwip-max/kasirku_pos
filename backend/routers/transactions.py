@@ -10,6 +10,7 @@ from lib.audit import log_activity
 from lib.auth import Principal, mask_cost, require
 from lib.scoped import ScopedRepo, scoped_repo
 from models.transaction import CartItemIn, CheckoutIn, Transaction, TransactionItemOut, VoidIn
+from models.transaction_report import TransactionRangeReport
 
 router = APIRouter(prefix="/transactions")
 WIB = ZoneInfo("Asia/Jakarta")
@@ -44,6 +45,26 @@ def _trx_out(doc: dict, principal: Principal) -> Transaction:
     )
 
 
+def _range_filter(start: str, end: str) -> dict:
+    """Mongo filter for a YYYY-MM-DD..YYYY-MM-DD range, inclusive, in shop time.
+
+    Dates are parsed server-side (WIB) so a report never shifts with the device clock.
+    """
+    bounds: dict = {}
+    try:
+        if start:
+            begin = datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=WIB)
+            bounds["$gte"] = begin.astimezone(timezone.utc)
+        if end:
+            finish = datetime.strptime(end, "%Y-%m-%d").replace(tzinfo=WIB) + timedelta(days=1)
+            bounds["$lt"] = finish.astimezone(timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Format tanggal harus YYYY-MM-DD")
+    if "$gte" in bounds and "$lt" in bounds and bounds["$gte"] >= bounds["$lt"]:
+        raise HTTPException(status_code=400, detail="Tanggal awal tidak boleh melewati tanggal akhir")
+    return bounds
+
+
 def _tier_price(product: dict, tier: str) -> int:
     """Voucher lines may be sold at the wholesale tier; everything else is retail."""
     if product["type"] == "voucher" and tier == "grosir":
@@ -73,12 +94,17 @@ async def list_transactions(
     period: str = "30d",
     method: str = "",
     q: str = "",
+    start: str = "",
+    end: str = "",
     principal: Principal = Depends(require("transaction:read")),
     repo: ScopedRepo = Depends(scoped_repo),
 ):
     query: dict = {}
     now = datetime.now(timezone.utc)
-    if period == "today":
+    if start or end:
+        # explicit date range (YYYY-MM-DD, shop timezone) wins over the period chips
+        query["created_at"] = _range_filter(start, end)
+    elif period == "today":
         start_wib = now.astimezone(WIB).replace(hour=0, minute=0, second=0, microsecond=0)
         query["created_at"] = {"$gte": start_wib.astimezone(timezone.utc)}
     elif period == "7d":
@@ -97,6 +123,44 @@ async def list_transactions(
         ]
     docs = await repo.find("transactions", query).sort("created_at", -1).to_list(200)
     return [_trx_out(doc, principal) for doc in docs]
+
+
+@router.get("/report", response_model=TransactionRangeReport)
+async def transactions_range_report(
+    start: str = "",
+    end: str = "",
+    method: str = "",
+    principal: Principal = Depends(require("report:read")),
+    repo: ScopedRepo = Depends(scoped_repo),
+):
+    """Totals for an explicit date range. Voided sales are counted separately, never in the money."""
+    query: dict = {}
+    if start or end:
+        query["created_at"] = _range_filter(start, end)
+    if method in ("tunai", "qris"):
+        query["payment_method"] = method
+
+    docs = await repo.find("transactions", query).to_list(20000)
+    report = TransactionRangeReport(
+        start=start, end=end, transaction_count=0, void_count=0, total_revenue=0,
+        total_cogs=0, total_profit=0, total_discount=0, items_sold=0, cash_total=0, qris_total=0,
+    )
+    for doc in docs:
+        if (doc.get("status") or "selesai") == "void":
+            report.void_count += 1
+            continue
+        report.transaction_count += 1
+        report.total_revenue += doc["total"]
+        report.total_discount += doc.get("discount_total", 0)
+        for item in doc["items"]:
+            report.total_cogs += int(item.get("cost") or 0) * item["qty"]
+            report.items_sold += item["qty"]
+        if doc["payment_method"] == "tunai":
+            report.cash_total += doc["total"]
+        else:
+            report.qris_total += doc["total"]
+    report.total_profit = report.total_revenue - report.total_cogs
+    return report
 
 
 @router.post("", response_model=Transaction, status_code=201)

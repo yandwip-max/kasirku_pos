@@ -310,3 +310,19 @@ export interface Category {
 export interface CategoryPayload {
   name: string;
 }
+
+/* ── Laporan transaksi per rentang tanggal ── */
+
+export interface TransactionRangeReport {
+  start: string;
+  end: string;
+  transaction_count: number;
+  void_count: number;
+  total_revenue: number;
+  total_cogs: number;
+  total_profit: number;
+  total_discount: number;
+  items_sold: number;
+  cash_total: number;
+  qris_total: number;
+}

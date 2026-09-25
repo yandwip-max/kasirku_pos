@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Ban } from "lucide-react";
+import { Search, Ban, X } from "lucide-react";
 import { apiGet } from "@/lib/api";
-import type { Transaction } from "@/lib/types";
+import type { Transaction, TransactionRangeReport } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { VoidTransactionDialog } from "@/components/DataTools";
-import { formatDateTime, formatRupiah } from "@/lib/format";
+import { formatDateShort, formatDateTime, formatRupiah } from "@/lib/format";
 import AppShell from "@/components/AppShell";
 import ReceiptDialog from "@/components/pos/ReceiptDialog";
 import { Badge } from "@/components/ui/badge";
@@ -28,17 +28,41 @@ const METHODS = [
   { id: "qris", label: "QRIS" },
 ] as const;
 
-function itemsSummary(t: Transaction): string {
-  const first = t.items[0];
+function itemsSummary(t: Transaction): string {  const first = t.items[0];
   if (!first) return "-";
   const extra = t.items.length - 1;
   return extra > 0 ? `${first.product_name} +${extra} lainnya` : first.product_name;
 }
 
-export default function TransactionsPage() {
-  const [period, setPeriod] = useState<string>("30d");
+/** One KPI tile inside the date-range report card. */
+function RangeStat({
+  label,
+  value,
+  tone = "text-slate-900",
+  testid,
+}: {
+  label: string;
+  value: string;
+  tone?: string;
+  testid: string;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={cn("font-mono text-sm font-bold", tone)} data-testid={testid}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+export default function TransactionsPage() {  const [period, setPeriod] = useState<string>("30d");
   const [method, setMethod] = useState<string>("");
   const [q, setQ] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  // an explicit date range overrides the quick period chips
+  const useRange = startDate !== "" || endDate !== "";
   const [detail, setDetail] = useState<Transaction | null>(null);
   const [voidTarget, setVoidTarget] = useState<Transaction | null>(null);
   const { permissions, isOwner } = useAuth();
@@ -46,16 +70,34 @@ export default function TransactionsPage() {
   const canVoid = isOwner || permissions.includes("transaction:void");
 
   const txQuery = useQuery({
-    queryKey: ["transactions", { period, method, q }],
+    queryKey: ["transactions", { period, method, q, startDate, endDate }],
     queryFn: () => {
       const params = new URLSearchParams();
-      if (period !== "all") params.set("period", period);
+      if (useRange) {
+        if (startDate) params.set("start", startDate);
+        if (endDate) params.set("end", endDate);
+      } else if (period !== "all") {
+        params.set("period", period);
+      }
       if (method) params.set("method", method);
       if (q.trim()) params.set("q", q.trim());
       return apiGet<Transaction[]>(`/transactions?${params.toString()}`);
     },
   });
   const rows = txQuery.data ?? [];
+
+  const reportQuery = useQuery({
+    queryKey: ["transactions", "report", { startDate, endDate, method }],
+    enabled: useRange && isOwner,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (startDate) params.set("start", startDate);
+      if (endDate) params.set("end", endDate);
+      if (method) params.set("method", method);
+      return apiGet<TransactionRangeReport>(`/transactions/report?${params.toString()}`);
+    },
+  });
+  const report = reportQuery.data;
 
   return (
     <AppShell>
@@ -113,8 +155,82 @@ export default function TransactionsPage() {
                 </button>
               ))}
             </div>
+
+            <div className="flex w-full flex-wrap items-end gap-2 border-t pt-3" data-testid="transaction-date-range">
+              <div className="grid gap-1">
+                <label htmlFor="trx-start" className="text-xs font-medium text-slate-500">
+                  Dari tanggal
+                </label>
+                <Input
+                  id="trx-start"
+                  type="date"
+                  value={startDate}
+                  max={endDate || undefined}
+                  className="w-40"
+                  onChange={(e) => setStartDate(e.target.value)}
+                  data-testid="transaction-start-date-input"
+                />
+              </div>
+              <div className="grid gap-1">
+                <label htmlFor="trx-end" className="text-xs font-medium text-slate-500">
+                  Sampai tanggal
+                </label>
+                <Input
+                  id="trx-end"
+                  type="date"
+                  value={endDate}
+                  min={startDate || undefined}
+                  className="w-40"
+                  onChange={(e) => setEndDate(e.target.value)}
+                  data-testid="transaction-end-date-input"
+                />
+              </div>
+              {useRange && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="transaction-range-reset-btn"
+                  onClick={() => {
+                    setStartDate("");
+                    setEndDate("");
+                  }}
+                >
+                  <X className="h-3.5 w-3.5" /> Hapus rentang
+                </Button>
+              )}
+              <p className="text-xs text-slate-400">
+                {useRange
+                  ? "Rentang tanggal aktif — filter cepat di atas diabaikan."
+                  : "Pilih tanggal untuk laporan transaksi per periode tertentu."}
+              </p>
+            </div>
           </CardContent>
         </Card>
+
+        {useRange && report && (
+          <Card data-testid="transaction-range-report">
+            <CardContent className="p-4">
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="font-heading text-base font-bold">
+                  Laporan {startDate ? formatDateShort(startDate) : "awal"} –{" "}
+                  {endDate ? formatDateShort(endDate) : "hari ini"}
+                </h2>
+                <span className="text-xs text-slate-500" data-testid="range-report-meta">
+                  {report.transaction_count} transaksi · {report.items_sold} item terjual
+                  {report.void_count > 0 ? ` · ${report.void_count} dibatalkan (tidak dihitung)` : ""}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+                <RangeStat label="Omzet" value={formatRupiah(report.total_revenue)} testid="range-revenue" />
+                <RangeStat label="Modal / HPP" value={formatRupiah(report.total_cogs)} tone="text-amber-600" testid="range-cogs" />
+                <RangeStat label="Keuntungan" value={formatRupiah(report.total_profit)} tone="text-emerald-700" testid="range-profit" />
+                <RangeStat label="Total Diskon" value={formatRupiah(report.total_discount)} testid="range-discount" />
+                <RangeStat label="Tunai" value={formatRupiah(report.cash_total)} testid="range-cash" />
+                <RangeStat label="QRIS" value={formatRupiah(report.qris_total)} testid="range-qris" />
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardContent className="p-0">
