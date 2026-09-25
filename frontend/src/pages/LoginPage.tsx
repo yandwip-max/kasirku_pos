@@ -15,6 +15,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("login");
   const [busy, setBusy] = useState(false);
+  // Inline banner in addition to the toast: on a phone the toast can be missed.
+  const [error, setError] = useState("");
 
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [regForm, setRegForm] = useState({
@@ -27,7 +29,9 @@ export default function LoginPage() {
   });
 
   async function submitLogin() {
+    setError("");
     if (!loginForm.email.trim() || !loginForm.password) {
+      setError("Email dan password wajib diisi");
       toast.error("Email dan password wajib diisi");
       return;
     }
@@ -37,18 +41,23 @@ export default function LoginPage() {
       toast.success("Berhasil masuk");
       navigate("/", { replace: true });
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Gagal masuk. Periksa koneksi lalu coba lagi."));
+      const message = apiErrorMessage(err, "Gagal masuk. Periksa koneksi lalu coba lagi.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
   }
 
   async function submitRegister() {
+    setError("");
     if (!regForm.store_name.trim() || !regForm.name.trim() || !regForm.email.trim()) {
+      setError("Nama toko, nama Anda, dan email wajib diisi");
       toast.error("Nama toko, nama Anda, dan email wajib diisi");
       return;
     }
     if (regForm.password.length < 6) {
+      setError("Password minimal 6 karakter");
       toast.error("Password minimal 6 karakter");
       return;
     }
@@ -58,7 +67,9 @@ export default function LoginPage() {
       toast.success("Toko berhasil dibuat. Selamat datang!");
       navigate("/", { replace: true });
     } catch (err) {
-      toast.error(apiErrorMessage(err, "Gagal mendaftar. Periksa koneksi lalu coba lagi."));
+      const message = apiErrorMessage(err, "Gagal mendaftar. Periksa koneksi lalu coba lagi.");
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -111,7 +122,7 @@ export default function LoginPage() {
               <p className="font-heading text-lg font-extrabold tracking-tight">KasirKu</p>
             </div>
 
-            <Tabs value={tab} onValueChange={setTab}>
+            <Tabs value={tab} onValueChange={(value) => { setTab(value); setError(""); }}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="login" data-testid="login-tab">
                   Masuk
@@ -126,6 +137,15 @@ export default function LoginPage() {
                   <h2 className="font-heading text-xl font-bold">Masuk ke toko Anda</h2>
                   <p className="text-sm text-slate-500">Gunakan email dan password akun toko.</p>
                 </div>
+                {error && (
+                  <p
+                    role="alert"
+                    className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 duration-200"
+                    data-testid="login-error-message"
+                  >
+                    {error}
+                  </p>
+                )}
                 <div className="grid gap-2">
                   <Label htmlFor="login-email">Email</Label>
                   <Input
@@ -180,6 +200,15 @@ export default function LoginPage() {
                     kosong dan terpisah dari toko lain.
                   </p>
                 </div>
+                {error && (
+                  <p
+                    role="alert"
+                    className="animate-in fade-in slide-in-from-top-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 duration-200"
+                    data-testid="register-error-message"
+                  >
+                    {error}
+                  </p>
+                )}
                 <div className="grid gap-2">
                   <Label htmlFor="reg-store">Nama Toko *</Label>
                   <Input

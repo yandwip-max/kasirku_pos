@@ -3,11 +3,11 @@
 Owner-only and always store-scoped — a backup must never leak another tenant's rows.
 """
 
-import csv
 import io
 import json
 from datetime import datetime, timedelta, timezone
 
+import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
@@ -21,11 +21,58 @@ from lib.email import send_email
 router = APIRouter(prefix="/backup")
 
 COLLECTIONS = ("products", "product_units", "transactions", "activity_logs")
-DATASETS = {
-    "products": ["id", "name", "type", "category", "brand", "sku", "cost_price", "sell_price", "wholesale_price", "stock_qty", "min_stock"],
-    "units": ["id", "product_id", "imei", "color", "capacity", "status", "cost_price", "sell_price"],
-    "transactions": ["transaction_number", "created_at", "status", "cashier_name", "customer_name", "payment_method", "gross_total", "discount_total", "total", "profit", "items"],
+
+# dataset -> (mongo collection, {field: Indonesian column header}).
+# Internal ids are left out: the export is for reading in Excel, not for re-import.
+DATASETS: dict[str, tuple[str, dict[str, str]]] = {
+    "products": (
+        "products",
+        {
+            "name": "Nama Produk",
+            "type": "Tipe",
+            "category": "Folder / Kategori",
+            "brand": "Merek",
+            "sku": "SKU",
+            "cost_price": "Harga Modal",
+            "sell_price": "Harga Jual",
+            "wholesale_price": "Harga Grosir",
+            "stock_qty": "Stok",
+            "min_stock": "Stok Minimum",
+        },
+    ),
+    "units": (
+        "product_units",
+        {
+            "product_name": "Nama Produk",
+            "imei": "IMEI",
+            "color": "Warna",
+            "capacity": "Kapasitas",
+            "status": "Status",
+            "cost_price": "Harga Modal",
+            "sell_price": "Harga Jual",
+            "created_at": "Tanggal Masuk",
+            "sold_at": "Tanggal Terjual",
+        },
+    ),
+    "transactions": (
+        "transactions",
+        {
+            "transaction_number": "No. Struk",
+            "created_at": "Tanggal",
+            "status": "Status",
+            "cashier_name": "Kasir",
+            "customer_name": "Pembeli",
+            "payment_method": "Pembayaran",
+            "gross_total": "Subtotal",
+            "discount_total": "Diskon",
+            "total": "Total",
+            "profit": "Laba",
+            "items": "Rincian Barang",
+        },
+    ),
 }
+
+STATUS_LABELS = {"in_stock": "Tersedia", "sold": "Terjual", "selesai": "Selesai", "void": "Dibatalkan"}
 
 
 def _json_safe(value):
@@ -110,42 +157,67 @@ async def send_report_now(principal: Principal = Depends(require("user:manage"))
     )
     return {"status": "sent", "to": user["email"], "email_id": email_id}
 
-async def export_csv(
+
+@router.get("/xlsx/{dataset}")
+async def export_xlsx(
     dataset: str,
     principal: Principal = Depends(require("user:manage")),
     repo: ScopedRepo = Depends(scoped_repo),
 ):
-    """Excel-friendly export. `items` on a transaction is flattened to one text cell."""
+    """Real Excel workbook: proper columns, Indonesian headers, readable labels.
+
+    CSV was fragile — Excel/WPS on Android put every field in one cell unless the
+    delimiter happened to match the device locale. A .xlsx file has no delimiter at all.
+    """
     if dataset not in DATASETS:
         raise HTTPException(status_code=404, detail="Jenis data tidak dikenal")
 
-    collection = {"products": "products", "units": "product_units", "transactions": "transactions"}[dataset]
+    collection, columns = DATASETS[dataset]
     docs = await repo.find(collection, {}).to_list(100000)
-    columns = DATASETS[dataset]
 
-    buffer = io.StringIO()
-    buffer.write("\ufeff")  # BOM so Excel reads the Indonesian text correctly
-    writer = csv.writer(buffer, delimiter=";")
-    writer.writerow(columns)
+    # units carry only product_id; resolve the product name so the sheet is readable
+    if dataset == "units":
+        products = await repo.find("products", {}).to_list(5000)
+        names = {p["id"]: p.get("name", "") for p in products}
+        for doc in docs:
+            doc["product_name"] = names.get(doc.get("product_id"), "(produk terhapus)")
+
+    rows = []
     for doc in docs:
-        row = []
-        for column in columns:
-            value = doc.get(column)
-            if column == "items" and isinstance(value, list):
-                value = " | ".join(
+        row: dict = {}
+        for field, header in columns.items():
+            value = doc.get(field)
+            if field == "items" and isinstance(value, list):
+                value = "\n".join(
                     f"{i.get('product_name')} x{i.get('qty')} @{i.get('price')}"
-                    + (f" IMEI {i['imei']}" if i.get("imei") else "")
+                    + (f" (IMEI {i['imei']})" if i.get("imei") else "")
                     for i in value
                 )
             elif isinstance(value, datetime):
-                value = (value if value.tzinfo else value.replace(tzinfo=timezone.utc)).isoformat()
-            elif column == "status" and not value:
-                value = "selesai"
-            row.append("" if value is None else value)
-        writer.writerow(row)
+                aware = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+                value = aware.astimezone(WIB).strftime("%d/%m/%Y %H:%M")
+            elif field == "status":
+                value = STATUS_LABELS.get(value or "selesai", value or "selesai")
+            elif field == "type":
+                value = {"handphone": "Handphone", "aksesoris": "Aksesoris", "voucher": "Voucher Pulsa"}.get(value, value)
+            elif field == "payment_method":
+                value = {"tunai": "Tunai", "qris": "QRIS"}.get(value, value)
+            row[header] = "" if value is None else value
+        rows.append(row)
+
+    frame = pd.DataFrame(rows, columns=list(columns.values()))
+    buffer = io.BytesIO()
+    sheet = {"products": "Produk", "units": "Stok IMEI", "transactions": "Transaksi"}[dataset]
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        frame.to_excel(writer, index=False, sheet_name=sheet, freeze_panes=(1, 0))
+        worksheet = writer.sheets[sheet]
+        for index, header in enumerate(frame.columns, start=1):
+            widest = max([len(str(header))] + [len(str(v)[:40]) for v in frame[header].head(200)] or [0])
+            worksheet.column_dimensions[worksheet.cell(row=1, column=index).column_letter].width = min(widest + 3, 42)
 
     return Response(
         content=buffer.getvalue(),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{_filename(dataset, "csv")}"'},
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{_filename(dataset, "xlsx")}"'},
     )
+

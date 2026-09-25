@@ -122,9 +122,9 @@ export function VoidTransactionDialog({
 
 const BACKUPS = [
   { path: "/api/backup/export", label: "Cadangan Lengkap (JSON)", hint: "Semua produk, stok, transaksi & aktivitas", icon: HardDriveDownload, testid: "backup-json-btn" },
-  { path: "/api/backup/csv/products", label: "Produk (CSV)", hint: "Buka di Excel / Google Sheets", icon: FileSpreadsheet, testid: "backup-products-csv-btn" },
-  { path: "/api/backup/csv/units", label: "Stok IMEI (CSV)", hint: "Daftar unit handphone per IMEI", icon: FileSpreadsheet, testid: "backup-units-csv-btn" },
-  { path: "/api/backup/csv/transactions", label: "Transaksi (CSV)", hint: "Riwayat penjualan untuk pembukuan", icon: FileSpreadsheet, testid: "backup-transactions-csv-btn" },
+  { path: "/api/backup/xlsx/products", label: "Produk (Excel)", hint: "Kolom rapi, langsung terbaca di Excel/WPS", icon: FileSpreadsheet, testid: "backup-products-csv-btn" },
+  { path: "/api/backup/xlsx/units", label: "Stok IMEI (Excel)", hint: "Nama produk, IMEI, warna, kapasitas, status", icon: FileSpreadsheet, testid: "backup-units-csv-btn" },
+  { path: "/api/backup/xlsx/transactions", label: "Transaksi (Excel)", hint: "Riwayat penjualan untuk pembukuan", icon: FileSpreadsheet, testid: "backup-transactions-csv-btn" },
 ];
 
 export function BackupCard() {

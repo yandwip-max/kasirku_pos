@@ -221,8 +221,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </Button>
         </DialogContent>
       </Dialog>
-
-      <Toaster />
     </div>
   );
 }

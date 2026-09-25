@@ -132,3 +132,12 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 - `GET /api/products?category=<nama>` memfilter per folder (case-insensitive). Produk di folder dihitung per jumlah stok; IMEI tetap khusus handphone.
 - Anti-duplikat produk: `POST /api/products` dan `PATCH /api/products/{id}` menolak nama produk yang sama (case-insensitive) dalam satu toko → 409.
 - UI: tombol **Kelola Folder** + baris chip "Folder:" di /products (`src/components/CategoryManager.tsx`), chip folder juga muncul di halaman Kasir, dan dropdown Folder/Kategori di form produk memakai folder toko.
+
+## Catatan regresi (2026-09-25)
+- Toaster sempat hanya dipasang di AppShell sehingga error login/daftar tidak pernah tampil. Sekarang `<Toaster />` dipasang di root `src/App.tsx` (bukan AppShell) + banner error inline di LoginPage (`login-error-message` / `register-error-message`).
+- Dekorator `@router.get("/csv/{dataset}")` di `backend/routers/backup.py` pernah hilang saat penyuntingan → semua unduhan CSV 404. Sudah dipasang kembali; jaga agar setiap endpoint punya dekorator saat menambah rute baru di file yang sama.
+
+## Ekspor data: CSV → Excel (.xlsx)
+- CSV `;` membuat semua kolom menumpuk di satu sel pada Excel/WPS Android, jadi ekspor diganti ke **.xlsx** asli via pandas + openpyxl.
+- `GET /api/backup/xlsx/{products|units|transactions}` (izin user:manage). Header berbahasa Indonesia, label status/tipe/pembayaran dimanusiakan, tanggal diformat dd/mm/yyyy HH:MM WIB, lebar kolom otomatis, baris header dibekukan. Dataset `units` ikut menyertakan Nama Produk (di-join dari products).
+- Rute `/api/backup/csv/...` DIHAPUS (404). JSON snapshot `/api/backup/export` tetap ada.

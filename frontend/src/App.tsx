@@ -8,13 +8,17 @@ import DailyReportPage from "@/pages/DailyReportPage";
 import ReportsPage from "@/pages/ReportsPage";
 import UsersPage from "@/pages/UsersPage";
 import ActivityLogPage from "@/pages/ActivityLogPage";
+import { Toaster } from "@/components/ui/sonner";
 
 // One <Route> per page in src/pages; BrowserRouter already wraps this in main.tsx.
 // Pemilik-only screens are wrapped in RequirePermission — the backend enforces the
 // same permissions, this just avoids rendering a screen that would 403.
 export default function App() {
   return (
-    <Routes>
+    <>
+      {/* Mounted at the root so toasts also show on /login, which has no AppShell. */}
+      <Toaster />
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
 
       <Route
@@ -76,6 +80,7 @@ export default function App() {
       />
 
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </>
   );
 }
