@@ -1,4 +1,4 @@
-import { BatteryCharging, Cable, Gift, Headphones, Package, PackageX, Search, Smartphone } from "lucide-react";
+import { BatteryCharging, Cable, Gift, Headphones, Package, PackageX, Search, Smartphone, Zap } from "lucide-react";
 import type { Product } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 function categoryIcon(product: Product) {
+  if (product.type === "non_fisik") return Zap;
   if (product.type === "handphone") return Smartphone;
   if (product.type === "voucher") return Gift;
   if (product.category.includes("Audio")) return Headphones;
@@ -15,7 +16,8 @@ function categoryIcon(product: Product) {
 }
 
 function stockLabel(product: Product): string {
-  if (product.type === "handphone") return `${product.stock} unit`;
+  if (product.type === "non_fisik") return "Layanan";
+  if (product.type === "handphone" || product.type === "voucher" || product.track_imei) return `${product.stock} unit`;
   return `${product.stock} pcs`;
 }
 
@@ -46,7 +48,7 @@ export default function ProductGrid({ products, isLoading, isError, onAdd }: Pro
       {!isLoading &&
         products.map((p) => {
           const Icon = categoryIcon(p);
-          const low = p.stock < p.min_stock;
+          const low = p.type !== "non_fisik" && p.stock < p.min_stock;
           const hasWholesale = p.type === "voucher" && p.wholesale_price > 0;
           return (
             <div
@@ -58,7 +60,7 @@ export default function ProductGrid({ products, isLoading, isError, onAdd }: Pro
                 <div
                   className={cn(
                     "flex h-9 w-9 items-center justify-center rounded-lg",
-                    p.type === "voucher" ? "bg-violet-50 text-violet-600" : "bg-sky-50 text-[#0284C7]",
+                    p.type === "non_fisik" ? "bg-emerald-50 text-emerald-700" : p.type === "voucher" ? "bg-violet-50 text-violet-600" : "bg-sky-50 text-[#0284C7]",
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -75,10 +77,15 @@ export default function ProductGrid({ products, isLoading, isError, onAdd }: Pro
               </div>
               <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug">{p.name}</p>
               <p className="truncate text-xs text-slate-500">
-                {p.type === "voucher" ? "Voucher Pulsa" : p.brand || p.category}
+                {p.type === "non_fisik" ? `${p.provider} · ${p.service_category === "ewallet" ? "E-Wallet" : p.service_category === "pln" ? "Listrik PLN" : "Pulsa"}` : p.type === "voucher" ? "Voucher Data" : p.brand || p.category}
                 {p.sku ? ` · ${p.sku}` : ""}
               </p>
-              <p className="mt-1 font-mono text-sm font-bold tracking-tight">{formatRupiah(p.sell_price)}</p>
+              {p.type === "non_fisik" && p.service_category !== "ewallet" ? (
+                <p className="font-mono text-xs text-slate-500">Nominal {formatRupiah(p.denomination ?? 0)}</p>
+              ) : null}
+              <p className="mt-1 font-mono text-sm font-bold tracking-tight">
+                {p.type === "non_fisik" && p.service_category === "ewallet" ? "Nominal fleksibel" : formatRupiah(p.sell_price)}
+              </p>
               {hasWholesale && (
                 <p className="font-mono text-[11px] text-violet-600" data-testid="product-card-wholesale-price">
                   Grosir {formatRupiah(p.wholesale_price)}
@@ -88,10 +95,10 @@ export default function ProductGrid({ products, isLoading, isError, onAdd }: Pro
                 size="sm"
                 className="mt-2 w-full active:scale-[0.98] transition-transform duration-100"
                 data-testid="pos-add-to-cart-btn"
-                disabled={p.stock < 1}
+                disabled={p.type !== "non_fisik" && p.stock < 1}
                 onClick={() => onAdd(p)}
               >
-                {p.type === "handphone" ? "Pilih IMEI" : "Tambah"}
+                {p.type === "non_fisik" ? "Jual Layanan" : p.type === "handphone" ? "Pilih IMEI" : p.type === "voucher" ? "Pilih Barcode" : p.track_imei ? "Pilih IMEI" : "Tambah"}
               </Button>
             </div>
           );

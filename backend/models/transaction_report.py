@@ -15,3 +15,6 @@ class TransactionRangeReport(BaseModel):
     items_sold: int
     cash_total: int
     qris_total: int
+    piutang_total: int
+    piutang_paid: int
+    piutang_unpaid: int

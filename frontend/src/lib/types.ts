@@ -1,10 +1,12 @@
 // Hand-written mirrors of the backend Pydantic models (backend/models/*.py).
 // Nothing infers across the Python boundary — keep these in sync in the same edit.
 
-export type ProductType = "handphone" | "aksesoris" | "voucher";
+export type ProductType = "handphone" | "aksesoris" | "voucher" | "lainnya" | "non_fisik";
+export type ServiceCategory = "pulsa" | "ewallet" | "pln";
 export type Role = "pemilik" | "kasir";
 export type DiscountType = "nominal" | "persen";
 export type PriceTier = "ritel" | "grosir";
+export type PaymentMethod = "tunai" | "qris" | "piutang";
 
 export interface Store {
   id: string;
@@ -14,7 +16,35 @@ export interface Store {
   /** editable receipt footer */
   receipt_warranty: string;
   receipt_thanks: string;
+  opening_time: string;
+  closing_time: string;
+  timezone: string;
+  daily_report_enabled: boolean;
   created_at: string;
+}
+
+export interface StoreSchedulePayload {
+  opening_time: string;
+  closing_time: string;
+  timezone: string;
+  daily_report_enabled: boolean;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  user_id: string;
+  user_name: string;
+  work_date: string;
+  check_in_at: string;
+  check_out_at: string | null;
+}
+
+export interface TodayAttendance {
+  work_date: string;
+  opening_time: string;
+  closing_time: string;
+  timezone: string;
+  attendance: AttendanceRecord | null;
 }
 
 export interface User {
@@ -84,8 +114,12 @@ export interface Product {
   name: string;
   brand: string;
   type: ProductType;
+  service_category: ServiceCategory | null;
+  provider: string;
+  denomination: number | null;
   category: string;
   sku: string;
+  barcode: string;
   /** null when the signed-in role may not see harga modal (Kasir) */
   cost_price: number | null;
   sell_price: number; // harga ritel
@@ -93,16 +127,19 @@ export interface Product {
   stock_qty: number;
   min_stock: number;
   is_active: boolean;
-  created_at: string;
-  /** computed: in-stock unit count for handphones, stock_qty for accessories */
-  stock: number;
-}
+   created_at: string;
+   /** when true, this product is serialized by IMEI/barcode per unit (handphones always are) */
+   track_imei: boolean;
+   /** computed: in-stock unit count for handphones, stock_qty for accessories */
+   stock: number;
+ }
 
 export interface ProductUnit {
   id: string;
   store_id: string;
   product_id: string;
   imei: string;
+  barcode: string | null;
   color: string;
   capacity: string;
   /** per-unit prices; 0 = fall back to the product-level price, null = masked for Kasir */
@@ -114,13 +151,24 @@ export interface ProductUnit {
   transaction_id: string | null;
 }
 
+export interface ProductScanResult {
+  product: Product;
+  unit: ProductUnit | null;
+}
+
 export interface TransactionItem {
   product_id: string;
   product_name: string;
   unit_id: string | null;
   imei: string | null;
+  barcode: string | null;
   color: string | null;
   capacity: string | null;
+  service_category?: ServiceCategory | null;
+  provider?: string | null;
+  service_target?: string | null;
+  service_amount?: number | null;
+  pln_token?: string | null;
   qty: number;
   price: number; // unit price BEFORE discount
   price_tier: PriceTier;
@@ -142,7 +190,7 @@ export interface Transaction {
   total: number;
   /** null when masked for Kasir */
   profit: number | null;
-  payment_method: "tunai" | "qris";
+  payment_method: PaymentMethod;
   amount_paid: number;
   change_amount: number;
   customer_name: string;
@@ -150,6 +198,9 @@ export interface Transaction {
   cashier_name: string;
   client_ref: string | null;
   created_at: string;
+  due_date: string | null;
+  piutang_status: "unpaid" | "paid" | null;
+  piutang_paid_at: string | null;
   /** void/retur bookkeeping — legacy rows are "selesai" */
   status: "selesai" | "void";
   void_type: "void" | "retur" | null;
@@ -166,6 +217,9 @@ export interface CartLine {
   priceTier: PriceTier;
   discountType: DiscountType | null;
   discountValue: number; // rupiah for "nominal", percent for "persen"
+  serviceTarget?: string | null;
+  serviceAmount?: number | null;
+  serviceLineId?: string;
 }
 
 export interface DailyPoint {
@@ -175,7 +229,7 @@ export interface DailyPoint {
 }
 
 export interface PaymentPoint {
-  method: string; // tunai | qris
+  method: string; // tunai | qris | piutang
   count: number;
   revenue: number;
 }
@@ -195,6 +249,8 @@ export interface ReportSummary {
   transaction_count: number;
   phones_sold: number;
   avg_transaction: number;
+  piutang_paid: number;
+  piutang_unpaid: number;
   daily: DailyPoint[];
   payment_breakdown: PaymentPoint[];
   top_products: TopProduct[];
@@ -211,6 +267,9 @@ export interface DailyRow {
   phones_sold: number;
   cash: number;
   qris: number;
+  piutang: number;
+  piutang_paid: number;
+  piutang_unpaid: number;
   margin_percent: number;
 }
 
@@ -228,17 +287,23 @@ export interface ProductPayload {
   name: string;
   brand: string;
   type: ProductType;
+  service_category: ServiceCategory | null;
+  provider: string;
+  denomination: number | null;
   category: string;
   sku: string;
+  barcode: string;
   cost_price: number;
   sell_price: number;
   wholesale_price: number;
   stock_qty: number;
   min_stock: number;
+  track_imei: boolean;
 }
 
 export interface UnitPayload {
   imei: string;
+  barcode?: string;
   color: string;
   capacity: string;
   cost_price: number;
@@ -253,14 +318,17 @@ export interface CheckoutPayload {
     price_tier: PriceTier;
     discount_type: DiscountType | null;
     discount_value: number;
+    service_target?: string | null;
+    service_amount?: number | null;
   }[];
-  payment_method: "tunai" | "qris";
+  payment_method: PaymentMethod;
   amount_paid: number | null;
   customer_name: string;
   customer_phone: string;
   /** set for sales queued offline so a replay is recorded exactly once */
   client_ref?: string;
   offline_created_at?: string;
+  due_date?: string | null;
 }
 /* ── Riwayat Aktivitas (audit trail) — mirrors backend/models/audit.py ── */
 
@@ -325,4 +393,25 @@ export interface TransactionRangeReport {
   items_sold: number;
   cash_total: number;
   qris_total: number;
+  piutang_total: number;
+  piutang_paid: number;
+  piutang_unpaid: number;
+}
+
+/* ── Laporan Absensi (owner-only) ── */
+
+export interface AttendanceEmployeeSummary {
+  user_id: string;
+  user_name: string;
+  work_days: number;
+  complete_days: number;
+  avg_duration_minutes: number | null;
+}
+
+export interface AttendanceReport {
+  period_days: number;
+  date_from: string;
+  date_to: string;
+  total_records: number;
+  employees: AttendanceEmployeeSummary[];
 }

@@ -21,6 +21,10 @@ class Store(BaseModel):
     # editable receipt footer: warranty note + closing greeting
     receipt_warranty: str = "Garansi resmi toko 7 hari (tukar unit bila ada cacat pabrik)."
     receipt_thanks: str = "Terima kasih telah berbelanja!"
+    opening_time: str = "08:00"
+    closing_time: str = "21:00"
+    timezone: str = "Asia/Jakarta"
+    daily_report_enabled: bool = True
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -60,6 +64,10 @@ class LoginIn(BaseModel):
     password: str
 
 
+class GoogleLoginIn(BaseModel):
+    credential: str = Field(min_length=1, max_length=8192)
+
+
 class CreateUserIn(BaseModel):
     name: str = Field(min_length=2, max_length=60)
     email: EmailStr
@@ -91,6 +99,13 @@ class StoreUpdateIn(BaseModel):
     # receipt footer text; omitted = keep whatever is stored
     receipt_warranty: Optional[str] = Field(default=None, max_length=200)
     receipt_thanks: Optional[str] = Field(default=None, max_length=120)
+
+
+class StoreScheduleUpdateIn(BaseModel):
+    opening_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    closing_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    timezone: str = Field(default="Asia/Jakarta", min_length=1, max_length=64)
+    daily_report_enabled: bool = True
 
 
 class SessionOut(BaseModel):

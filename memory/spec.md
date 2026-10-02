@@ -12,6 +12,7 @@ Aplikasi kasir (POS) multi-toko untuk toko handphone & aksesoris. UI Bahasa Indo
   - `pemilik`: product:read/write, transaction:create/read, report:read, user:manage, cost:read
   - `kasir`: product:read, transaction:create, transaction:read
 - **Isolasi data**: semua query data toko lewat `lib/scoped.py:ScopedRepo` yang WAJIB menyuntik `store_id` (termasuk stage-0 `$match` pada aggregate). Route tidak pernah memanggil `db.<coll>` langsung untuk data tenant. `store_id` di body request diabaikan (di-stamp dari principal).
+- **Jam operasional & absensi**: pemilik mengatur `opening_time`, `closing_time`, `timezone`, dan `daily_report_enabled` lewat `PATCH /auth/store/schedule` (izin `user:manage`). User hanya dapat absen masuk/pulang sekali per tanggal lokal toko; `GET /attendance` untuk daftar seluruh staf khusus pemilik.
 - Kode status: peran tidak berizin → **403**; data milik toko lain → **404** (tidak membocorkan keberadaan data).
 - **Field-level masking**: `cost_price` (produk & unit), `cost` (item transaksi), dan `profit` dikirim `null` untuk Kasir (`mask_cost`), bukan disembunyikan di UI.
 
@@ -19,8 +20,9 @@ Aplikasi kasir (POS) multi-toko untuk toko handphone & aksesoris. UI Bahasa Indo
 - **Diskon per item** (Kasir & Pemilik, tanpa batas): tiap baris keranjang bisa diberi diskon **nominal (Rp)** atau **persen (%)**. Server selalu menghitung ulang rupiah diskon dari `discount_type` + `discount_value` (`_resolve_discount`) — nilai uang dari klien tidak pernah dipercaya. Validasi: persen > 100 → **400**, nominal > harga item → **400**. UI meng-clamp input persen ke 100 sehingga state invalid tidak terjadi dari layar; tombol bayar dikunci bila tetap invalid.
 - Transaksi menyimpan `gross_total` (sebelum diskon), `discount_total`, dan `total`; tiap item menyimpan `price` (sebelum diskon), `discount_type`, `discount_value`, `discount`, `subtotal`. **Laba ikut turun** karena dihitung dari `subtotal − cost × qty`.
 - Struk menampilkan potongan per item + Subtotal & Total Diskon; riwayat menampilkan badge diskon per transaksi.
-- **Tipe produk `voucher`** (Voucher Pulsa): stok berupa jumlah (seperti aksesoris, bukan IMEI) dengan **dua harga** — `sell_price` (ritel) dan `wholesale_price` (grosir; 0 = ikut ritel). Kasir memilih tier **Ritel/Grosir** per baris keranjang (`price_tier`); tier hanya berlaku untuk voucher, tipe lain selalu ritel. Tier tersimpan di item transaksi dan tampil di struk sebagai "(Grosir)".
-- Menambah unit IMEI ke produk voucher/aksesoris → **409**.
+- **Tipe produk `voucher` (Voucher Data)**: setiap kartu/kode fisik adalah unit dengan barcode unik per toko, status `in_stock|sold`, harga modal, dan harga jual per unit. Tidak boleh dijual dari stok jumlah; tiap penjualan harus memilih unit barcode yang masih tersedia.
+- Scanner USB/HID mengirim barcode ke input aktif lalu Enter: POS menambahkan unit barcode/IMEI atau produk umum ke keranjang; modal Kelola Unit pemilik memindai barcode setiap voucher data yang masuk. Kode unit terjual tidak dapat digunakan lagi; void/retur mengembalikan status unit.
+- Aksesoris tetap memakai `stock_qty`; menambah unit ke aksesoris → **409**. Voucher lama yang masih punya `stock_qty` ditampilkan sebagai unit lama yang belum discan dan nilainya turun satu per satu saat kode fisik direkam.
 
 ## Urutan transaksi (penting)
 `POST /transactions` berjalan 3 tahap: (1) ambil & validasi produk/unit/stok, (2) **hitung harga, diskon, dan lunasi pembayaran** — tunai kurang → 400 di sini, (3) baru klaim stok/unit secara atomik dengan rollback kompensasi. Urutan ini wajib: sebelumnya validasi tunai terjadi setelah stok dipotong sehingga checkout gagal tetap menghabiskan stok & menandai IMEI terjual (bug, sudah diperbaiki).
@@ -31,10 +33,10 @@ Semua field uang & stok di form (produk, unit IMEI) memakai **input teks digit-o
 ## Data Model (Mongo, db `app`)
 - `stores`: `id`, `name`, `address`, `phone`, `created_at`
 - `users`: `id`, `store_id`, `name`, `email` (unik global), `password_hash` (bcrypt), `role`, `is_active`, `created_at`
-- `products`: `id`, `store_id`, `name`, `brand`, `type` ("handphone"|"aksesoris"|"voucher"), `category`, `sku`, `cost_price`, `sell_price` (ritel), `wholesale_price` (grosir, voucher), `stock_qty` (aksesoris & voucher), `min_stock`, `is_active`, `created_at`
-- `product_units`: unit fisik handphone — `id`, `store_id`, `product_id`, `imei` (**unik per toko**), `color`, `capacity`, `cost_price`, `sell_price` (0 = ikut harga produk), `status` ("in_stock"|"sold"), `sold_at`, `transaction_id`
-- `transactions`: `id`, `store_id`, `transaction_number` (TRX-YYYYMMDD-NNNN per toko, WIB), `items`[{product_id, product_name, unit_id?, imei?, color?, capacity?, qty, price, **cost**, subtotal}], `total`, **`profit`**, `payment_method`, `amount_paid`, `change_amount`, `customer_name/phone`, `cashier_name` (dari principal), **`client_ref`** (dedupe offline), `created_at`
-- Index kunci: `{store_id, imei}` unik, `{store_id, transaction_number}` unik, `{store_id, client_ref}` unik **partial** (`$type: string`), `{store_id, created_at}`. `ensure_indexes()` juga men-drop index single-tenant lama.
+- `products`: `id`, `store_id`, `name`, `brand`, `type` ("handphone"|"aksesoris"|"voucher"), `category`, `sku`, `barcode` (barcode umum opsional), `cost_price`, `sell_price`, `wholesale_price`, `stock_qty` (aksesoris saja; voucher/handphone dihitung dari unit), `min_stock`, `is_active`, `created_at`
+- `product_units`: unit fisik handphone dan voucher data — `id`, `store_id`, `product_id`, `imei`/`barcode` (**unik per toko**), `color`, `capacity`, `cost_price`, `sell_price`, `status` ("in_stock"|"sold"), `sold_at`, `transaction_id`
+- `transactions`: `id`, `store_id`, `transaction_number` (TRX-YYYYMMDD-NNNN per toko, WIB), `items`[{product_id, product_name, unit_id?, imei?, barcode?, color?, capacity?, qty, price, **cost**, subtotal}], `total`, **`profit`**, `payment_method`, `amount_paid`, `change_amount`, `customer_name/phone`, `cashier_name` (dari principal), **`client_ref`** (dedupe offline), `created_at`
+- Index kunci: `{store_id, imei}` unik, `{store_id, barcode}` unik parsial, `{store_id, product barcode}` unik parsial, `{store_id, transaction_number}` unik, `{store_id, client_ref}` unik **partial** (`$type: string`), `{store_id, created_at}`. `ensure_indexes()` juga men-drop index single-tenant lama.
 
 ## API (semua di bawah /api)
 Auth: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `GET /auth/users` (pemilik), `POST /auth/users` (pemilik), `PATCH /auth/users/{id}` (pemilik — ubah nama, min 2 karakter, boleh akun sendiri), `PATCH /auth/users/{id}/deactivate` (pemilik, tidak bisa akun sendiri → 409)
@@ -70,7 +72,7 @@ Laporan (pemilik): `GET /reports/summary?days=`, **`GET /reports/daily?days=7|14
 ## Pengaturan Toko & Akun (halaman /users, khusus Pemilik)
 - **Profil Toko** — kartu `store-profile-card` + dialog edit (`PATCH /api/auth/store`): nama, alamat, no. WhatsApp. Ketiganya tercetak di kepala struk (`ReceiptView.tsx`).
 - **Atur Ulang Password** — tombol "Password" per baris pengguna (`PATCH /api/auth/users/{user_id}/password`). Password lama tidak diperlukan; min. 6 karakter, harus sama dengan konfirmasi. Scoped `store_id` (pengguna toko lain → 404).
-- **Notifikasi Stok Menipis** — `LowStockAlert` di halaman Kasir (POS) membandingkan `stock_qty` vs `min_stock` untuk aksesoris & voucher.
+- **Notifikasi Stok Menipis** — `LowStockAlert` membandingkan jumlah aksesori dari `stock_qty`, serta jumlah unit tersedia untuk handphone dan voucher data, dengan `min_stock`.
 
 ## Riwayat Aktivitas (audit trail) — halaman /activity, khusus Pemilik
 - Koleksi `activity_logs`: {id, store_id, at, actor_id, actor_name, actor_role, action, category, entity_name, summary, changes[{field,before,after}]}.
@@ -116,6 +118,10 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 - Pekerjaan: untuk SETIAP akun `role=pemilik` yang aktif, kirim email berisi ringkasan 7 hari toko-nya (omzet, HPP, laba, transaksi, item, HP terjual, void/retur, stok menipis, 3 produk terlaris) + pengingat unduh cadangan. Jadi toko baru yang mendaftar otomatis ikut menerima.
 - Email dikirim via Emergent managed Resend (`backend/lib/email.py`): `EMERGENT_EMAIL_KEY`, `EMAIL_FROM_NAME="KasirKu POS"`, gate `_assert_safe_email` dipanggil di setiap pengiriman. Provider tidak mendukung lampiran, jadi email berisi ringkasan saja (sesuai permintaan user).
 - Catatan: email `pemilik@demo.id` (data demo) ditolak provider sebagai "undeliverable recipient" — normal untuk domain palsu. Akun dengan email asli akan terkirim (diverifikasi via `delivered@resend.dev`, email_id kembali).
+
+## Laporan Tutup Toko Harian
+- `.emergent/crons.yml` memanggil `/api/cron/daily-store-closing` setiap menit dengan `WEBHOOK_CRON_SECRET`.
+- Dispatcher mengecek jam lokal setiap toko, mengirim rekap hari itu ke tiap Pemilik aktif setelah jam tutup, dan menandai per toko/user/tanggal agar webhook berulang tidak mengirim duplikat.
 
 ## Ubah email login pengguna
 - `PATCH /api/auth/users/{id}` sekarang menerima `{name, email?}` (UpdateUserIn). Email divalidasi EmailStr, di-lowercase, dan harus unik lintas toko (bentrok → 409). Perubahan email dicatat di Riwayat Aktivitas dengan nilai sebelum → sesudah.

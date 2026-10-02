@@ -1,8 +1,13 @@
+import os
 from datetime import timezone
 from typing import List
 
+import google.auth.exceptions
+from google.auth.transport.requests import Request as GoogleRequest
+from google.oauth2 import id_token
 from fastapi import APIRouter, Depends, HTTPException
 from pymongo import ReturnDocument
+from starlette.concurrency import run_in_threadpool
 
 from lib.auth import (
     PERMISSIONS,
@@ -18,6 +23,7 @@ from models.audit import ActivityChange
 from lib.db import db
 from models.auth import (
     CreateUserIn,
+    GoogleLoginIn,
     LoginIn,
     MeOut,
     RegisterIn,
@@ -25,6 +31,7 @@ from models.auth import (
     SessionOut,
     Store,
     StoreUpdateIn,
+    StoreScheduleUpdateIn,
     UpdateUserIn,
     User,
     UserOut,
@@ -57,11 +64,16 @@ def _store_out(doc: dict) -> Store:
         phone=doc.get("phone", ""),
         receipt_warranty=doc.get("receipt_warranty") or defaults.receipt_warranty,
         receipt_thanks=doc.get("receipt_thanks") or defaults.receipt_thanks,
+        opening_time=doc.get("opening_time", defaults.opening_time),
+        closing_time=doc.get("closing_time", defaults.closing_time),
+        timezone=doc.get("timezone", defaults.timezone),
+        daily_report_enabled=doc.get("daily_report_enabled", defaults.daily_report_enabled),
         created_at=_aware(doc["created_at"]),
     )
 
 
 @router.post("/register", response_model=SessionOut, status_code=201)
+@db.transactional
 async def register(input: RegisterIn):
     """Create a brand-new store with its first Pemilik account. Data starts empty and
     is isolated from every other store by `store_id`."""
@@ -89,6 +101,44 @@ async def login(input: LoginIn):
     # same message for unknown email and wrong password — no account-existence oracle
     if not user or not verify_password(input.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Email atau password salah")
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="Akun ini sudah dinonaktifkan oleh pemilik toko")
+
+    store = await db.stores.find_one({"id": user["store_id"]})
+    if not store:
+        raise HTTPException(status_code=409, detail="Data toko tidak ditemukan")
+    return SessionOut(token=create_token(user["id"]), user=_user_out(user), store=_store_out(store))
+
+
+@router.get("/google/config")
+async def google_config():
+    return {"client_id": os.environ.get("GOOGLE_CLIENT_ID") or None}
+
+
+@router.post("/google", response_model=SessionOut)
+async def google_login(input: GoogleLoginIn):
+    client_id = os.environ.get("GOOGLE_CLIENT_ID")
+    if not client_id:
+        raise HTTPException(status_code=503, detail="Google OAuth belum dikonfigurasi")
+
+    try:
+        claims = await run_in_threadpool(
+            id_token.verify_oauth2_token,
+            input.credential,
+            GoogleRequest(),
+            client_id,
+        )
+    except google.auth.exceptions.TransportError as exc:
+        raise HTTPException(status_code=502, detail="Tidak dapat memverifikasi akun Google") from exc
+    except (ValueError, google.auth.exceptions.GoogleAuthError) as exc:
+        raise HTTPException(status_code=401, detail="Identitas Google tidak dapat diverifikasi")
+    if claims.get("email_verified") not in {True, "true"} or not claims.get("email"):
+        raise HTTPException(status_code=401, detail="Email akun Google belum terverifikasi")
+
+    email = claims["email"].strip().lower()
+    user = await db.users.find_one({"email": email})
+    if not user:
+        raise HTTPException(status_code=404, detail="Email Google belum terdaftar. Daftarkan toko terlebih dahulu.")
     if not user.get("is_active", True):
         raise HTTPException(status_code=403, detail="Akun ini sudah dinonaktifkan oleh pemilik toko")
 
@@ -228,6 +278,36 @@ async def update_store(input: StoreUpdateIn, principal: Principal = Depends(requ
         "store:update",
         summary="Memperbarui profil toko (tercetak di struk)",
         entity_name=updates["name"],
+        category="toko",
+    )
+    return _store_out(store)
+
+
+@router.patch("/store/schedule", response_model=Store)
+async def update_store_schedule(
+    input: StoreScheduleUpdateIn,
+    principal: Principal = Depends(require("user:manage")),
+):
+    """Only the store owner can set operating hours and the daily email schedule."""
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+    try:
+        ZoneInfo(input.timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(status_code=422, detail="Zona waktu tidak dikenal") from exc
+    if input.opening_time >= input.closing_time:
+        raise HTTPException(status_code=400, detail="Jam buka harus lebih awal dari jam tutup")
+    updates = input.model_dump()
+    store = await db.stores.find_one_and_update(
+        {"id": principal.store_id}, {"$set": updates}, return_document=ReturnDocument.AFTER
+    )
+    if not store:
+        raise HTTPException(status_code=404, detail="Data toko tidak ditemukan")
+    await log_activity(
+        principal,
+        "store:update",
+        summary=f"Mengatur jam operasional {updates['opening_time']}–{updates['closing_time']}",
+        entity_name=store.get("name", ""),
         category="toko",
     )
     return _store_out(store)

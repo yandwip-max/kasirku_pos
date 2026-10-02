@@ -53,6 +53,15 @@ export function receiptText(t: Transaction, store: Store | null, paper: "58" | "
   for (const item of t.items) {
     const title = item.price_tier === "grosir" ? `${item.product_name} (Grosir)` : item.product_name;
     wrap(title, w).forEach((l) => out.push(l));
+    if (item.service_category) {
+      out.push(`${item.provider ?? ""} ${item.service_category === "pulsa" ? "Pulsa" : item.service_category === "ewallet" ? "E-Wallet" : "Listrik PLN"}`.trim());
+      wrap(`Tujuan: ${item.service_target ?? "-"}`, w).forEach((line) => out.push(line));
+      if (item.service_amount) out.push(pad("Nominal layanan", formatRupiah(item.service_amount), w));
+      if (item.pln_token) {
+        out.push(center("TOKEN PLN", w));
+        out.push(center(item.pln_token, w));
+      }
+    }
     if (item.imei) wrap(`IMEI ${item.imei} ${item.color} ${item.capacity}`.trim(), w).forEach((l) => out.push(l));
     out.push(pad(`${item.qty} x ${formatRupiah(item.price)}`, formatRupiah(item.price * item.qty), w));
     if (item.discount > 0) {
@@ -69,8 +78,12 @@ export function receiptText(t: Transaction, store: Store | null, paper: "58" | "
     out.push(pad("Total Diskon", `-${formatRupiah(discountTotal)}`, w));
   }
   out.push(pad("TOTAL", formatRupiah(t.total), w));
-  out.push(pad(t.payment_method === "tunai" ? "Bayar (Tunai)" : "Bayar (QRIS)", formatRupiah(t.amount_paid), w));
-  out.push(pad("Kembalian", formatRupiah(t.change_amount), w));
+  out.push(pad(t.payment_method === "tunai" ? "Bayar (Tunai)" : t.payment_method === "qris" ? "Bayar (QRIS)" : t.payment_method === "piutang" ? "Uang Muka" : "Bayar", formatRupiah(t.amount_paid), w));
+  if (t.payment_method === "piutang") {
+    out.push(pad("Sisa Piutang", formatRupiah(t.total - (t.amount_paid ?? 0)), w));
+  } else {
+    out.push(pad("Kembalian", formatRupiah(t.change_amount), w));
+  }
   out.push(dash);
   if (store?.receipt_warranty) wrap(store.receipt_warranty, w).forEach((l) => out.push(center(l, w)));
   if (store?.receipt_thanks) wrap(store.receipt_thanks, w).forEach((l) => out.push(center(l, w)));
@@ -82,13 +95,18 @@ const ESC = 0x1b;
 const GS = 0x1d;
 
 /** Raw ESC/POS bytes for a direct Bluetooth (BLE) write: init, print text, feed, cut. */
-export function escposBytes(text: string): Uint8Array {
-  const body = new TextEncoder().encode(`${text}\n`);
-  const header = [ESC, 0x40, ESC, 0x61, 0x00]; // initialize + align left
-  const footer = [0x0a, 0x0a, 0x0a, GS, 0x56, 0x42, 0x00]; // feed + partial cut
-  const out = new Uint8Array(header.length + body.length + footer.length);
-  out.set(header, 0);
-  out.set(body, header.length);
-  out.set(footer, header.length + body.length);
-  return out;
+export function escposBytes(text: string, highlightedTokens: string[] = []): Uint8Array {
+  const encoder = new TextEncoder();
+  const bytes: number[] = [ESC, 0x40, ESC, 0x61, 0x00];
+  for (const line of text.split("\n")) {
+    if (highlightedTokens.includes(line.trim())) {
+      bytes.push(ESC, 0x61, 0x01, GS, 0x21, 0x11);
+      bytes.push(...encoder.encode(`${line}\n`));
+      bytes.push(GS, 0x21, 0x00, ESC, 0x61, 0x00);
+    } else {
+      bytes.push(...encoder.encode(`${line}\n`));
+    }
+  }
+  bytes.push(0x0a, 0x0a, 0x0a, GS, 0x56, 0x42, 0x00);
+  return new Uint8Array(bytes);
 }

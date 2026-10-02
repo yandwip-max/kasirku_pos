@@ -1,0 +1,12 @@
+{
+  "name": "tests",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "build": "npm --prefix frontend run build",
+    "dev": "npm --prefix frontend run dev --"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0"
+  }
+}

@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Query
 from pymongo import DESCENDING
-
 from lib.auth import Principal, require
 from lib.db import db
 from lib.dates import today_iso

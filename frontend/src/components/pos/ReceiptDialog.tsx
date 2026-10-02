@@ -52,7 +52,10 @@ export default function ReceiptDialog({ transaction, open, onOpenChange, printTe
     if (!transaction) return;
     setSending(true);
     try {
-      await printViaBluetooth(escposBytes(receiptText(transaction, store ?? null, paper)));
+      await printViaBluetooth(escposBytes(
+        receiptText(transaction, store ?? null, paper),
+        transaction.items.flatMap((item) => item.service_category === "pln" && item.pln_token ? [item.pln_token] : []),
+      ));
       toast.success("Struk terkirim ke printer bluetooth");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Gagal mencetak ke printer bluetooth";

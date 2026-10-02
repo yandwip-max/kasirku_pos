@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2, Lock, Store as StoreIcon } from "lucide-react";
+import { apiGet } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -10,11 +11,36 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
+declare global {
+  interface Window {
+    google?: {
+      accounts?: {
+        id?: {
+          initialize: (options: {
+            client_id: string;
+            callback: (response: { credential?: string }) => void;
+          }) => void;
+          renderButton: (element: HTMLElement, options: {
+            theme: "outline";
+            size: "large";
+            text: "continue_with";
+            shape: "rectangular";
+            width: number;
+          }) => void;
+        };
+      };
+    };
+  }
+}
+
 export default function LoginPage() {
-  const { login, register } = useAuth();
+  const { login, loginWithGoogle, register } = useAuth();
   const navigate = useNavigate();
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+  const googleLoginRef = useRef<(credential: string) => void>(() => undefined);
   const [tab, setTab] = useState("login");
   const [busy, setBusy] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState("");
   // Inline banner in addition to the toast: on a phone the toast can be missed.
   const [error, setError] = useState("");
 
@@ -27,6 +53,71 @@ export default function LoginPage() {
     email: "",
     password: "",
   });
+
+  async function submitGoogleLogin(credential: string) {
+    setError("");
+    setBusy(true);
+    try {
+      await loginWithGoogle(credential);
+      toast.success("Berhasil masuk dengan Google");
+      navigate("/", { replace: true });
+    } catch (err) {
+      const message = apiErrorMessage(err, "Gagal masuk dengan Google.");
+      setError(message);
+      toast.error(message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  googleLoginRef.current = (credential) => { void submitGoogleLogin(credential); };
+
+  useEffect(() => {
+    let cancelled = false;
+    apiGet<{ client_id: string | null }>("/auth/google/config")
+      .then(({ client_id }) => {
+        if (!cancelled && client_id) setGoogleClientId(client_id);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    const button = googleButtonRef.current;
+    if (!googleClientId || !button) return;
+
+    const renderButton = () => {
+      const identity = window.google?.accounts?.id;
+      if (!identity || !googleButtonRef.current) return;
+      identity.initialize({
+        client_id: googleClientId,
+        callback: ({ credential }) => {
+          if (credential) googleLoginRef.current(credential);
+        },
+      });
+      identity.renderButton(googleButtonRef.current, {
+        theme: "outline",
+        size: "large",
+        text: "continue_with",
+        shape: "rectangular",
+        width: Math.floor(googleButtonRef.current.clientWidth),
+      });
+    };
+
+    let script = document.querySelector<HTMLScriptElement>('script[src="https://accounts.google.com/gsi/client"]');
+    if (window.google?.accounts?.id) {
+      renderButton();
+      return;
+    }
+    if (!script) {
+      script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    }
+    script.addEventListener("load", renderButton);
+    return () => script?.removeEventListener("load", renderButton);
+  }, [googleClientId]);
 
   async function submitLogin() {
     setError("");
@@ -75,11 +166,6 @@ export default function LoginPage() {
     }
   }
 
-  function fillDemo() {
-    setTab("login");
-    setLoginForm({ email: "pemilik@demo.id", password: "demo1234" });
-  }
-
   return (
     <div className="grid min-h-svh lg:grid-cols-[1.1fr_1fr]">
       {/* Brand panel — asymmetric, left-weighted */}
@@ -92,7 +178,7 @@ export default function LoginPage() {
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15 backdrop-blur">
             <StoreIcon className="h-5 w-5" />
           </div>
-          <p className="font-heading text-lg font-extrabold tracking-tight">KasirKu</p>
+          <p className="font-heading text-lg font-extrabold tracking-tight">KasirKu - Family Cell</p>
         </div>
         <div className="relative max-w-md space-y-4">
           <h1 className="font-heading text-4xl font-extrabold leading-tight tracking-tight">
@@ -108,7 +194,7 @@ export default function LoginPage() {
             <li>• Bisa dipasang di layar utama HP (Android &amp; iOS)</li>
           </ul>
         </div>
-        <p className="relative text-xs text-sky-200/60">© {new Date().getFullYear()} KasirKu POS</p>
+        <p className="relative text-xs text-sky-200/60">© {new Date().getFullYear()} KasirKu - Family Cell</p>
       </div>
 
       {/* Form panel */}
@@ -119,7 +205,7 @@ export default function LoginPage() {
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0284C7] text-white">
                 <StoreIcon className="h-5 w-5" />
               </div>
-              <p className="font-heading text-lg font-extrabold tracking-tight">KasirKu</p>
+              <p className="font-heading text-lg font-extrabold tracking-tight">KasirKu - Family Cell</p>
             </div>
 
             <Tabs value={tab} onValueChange={(value) => { setTab(value); setError(""); }}>
@@ -180,16 +266,16 @@ export default function LoginPage() {
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
                   Masuk
                 </Button>
-                <button
-                  type="button"
-                  onClick={fillDemo}
-                  className="w-full rounded-lg border border-dashed border-slate-300 p-3 text-left text-xs leading-relaxed text-slate-500 transition-colors duration-100 hover:bg-slate-50"
-                  data-testid="login-demo-fill-btn"
-                >
-                  <span className="font-semibold text-slate-700">Coba toko demo</span> — klik untuk mengisi otomatis:
-                  <br />
-                  pemilik@demo.id / demo1234 (Pemilik) · kasir@demo.id / demo1234 (Kasir)
-                </button>
+                {googleClientId && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 text-xs text-slate-400">
+                      <span className="h-px flex-1 bg-slate-200" />
+                      <span>atau</span>
+                      <span className="h-px flex-1 bg-slate-200" />
+                    </div>
+                    <div ref={googleButtonRef} className="flex min-h-10 justify-center" />
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="register" className="mt-5 space-y-4">

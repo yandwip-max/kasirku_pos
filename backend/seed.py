@@ -6,13 +6,14 @@ this data — isolation is by `store_id`.
 """
 
 import math
+import os
 import random
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from lib.auth import hash_password
-from lib.db import db, ensure_indexes
+from lib.db import client, db, ensure_indexes
 
 WIB = ZoneInfo("Asia/Jakarta")
 NOW = datetime.now(timezone.utc)
@@ -72,20 +73,21 @@ ACCESSORIES = [
     ("Tempered Glass Anti Gores 9H", "QCF", "AK-GLS9H", "Aksesoris & Casing", 12000, 35000, 60),
     ("Soundcore TWS Earbuds Pro ANC", "Soundcore", "AK-TWSP", "Audio / TWS", 320000, 459000, 11),
     ("Sandisk MicroSD 128GB 120MB/s", "Sandisk", "AK-SD128", "Aksesoris & Casing", 110000, 165000, 17),
-    ("Voucher Data Telkomsel 10GB / 30 Hari", "Telkomsel", "VC-D10GB", "Voucher & Pulsa", 50000, 60000, 99),
 ]
 
-# Voucher pulsa/data: dijual ritel (sell_price) atau grosir (wholesale_price)
+# Voucher data are stocked as individually scanned codes.
 VOUCHERS = [
-    ("Voucher Pulsa Telkomsel 25.000", "Telkomsel", "VC-TSEL25", 24000, 27000, 25500, 80),
-    ("Voucher Pulsa Telkomsel 50.000", "Telkomsel", "VC-TSEL50", 48500, 53000, 50500, 60),
-    ("Voucher Pulsa Indosat 25.000", "Indosat", "VC-ISAT25", 23800, 26500, 25000, 50),
+    ("Voucher Data Telkomsel 10GB / 30 Hari", "Telkomsel", "VC-D10GB", 50000, 60000, 55000, 99),
+    ("Voucher Data Telkomsel 25GB / 30 Hari", "Telkomsel", "VC-TSEL25", 90000, 105000, 98000, 80),
+    ("Voucher Data Telkomsel 50GB / 30 Hari", "Telkomsel", "VC-TSEL50", 145000, 165000, 155000, 60),
+    ("Voucher Data Indosat 25GB / 30 Hari", "Indosat", "VC-ISAT25", 85000, 99000, 92000, 50),
     ("Voucher Data XL 5GB / 30 Hari", "XL Axiata", "VC-XL5GB", 42000, 52000, 47000, 35),
 ]
 
 CUSTOMERS = ["", "", "Budi Santoso", "Sari Wulandari", "Andi Pratama", "Rina Maulida", "Joko Susilo"]
 
 
+@db.transactional
 async def seed() -> None:
     if await db.stores.find_one({"name": DEMO_STORE_NAME}):
         print("Seed skipped: demo store already exists.")
@@ -179,19 +181,19 @@ async def seed() -> None:
             "name": name,
             "brand": brand,
             "type": "voucher",
-            "category": "Voucher & Pulsa",
+            "category": "Voucher Data",
             "sku": sku,
             "cost_price": cost,
             "sell_price": sell,  # harga ritel
             "wholesale_price": wholesale,  # harga grosir
-            "stock_qty": qty,
+            "stock_qty": 0,
             "min_stock": 10,
             "is_active": True,
             "created_at": NOW,
         }
         await db.products.insert_one(dict(doc))
         products_docs[doc["id"]] = doc
-        acc_docs.append(doc)  # sold like accessories in the seeded history
+        acc_docs.append({**doc, "stock_qty": qty})  # simulated historic sales before per-code stock
 
     # Serialized handphone units (15-digit IMEI per physical unit)
     units_by_product: dict[str, list[dict]] = {}
@@ -315,6 +317,29 @@ async def seed() -> None:
     if txs:
         await db.transactions.insert_many([dict(t) for t in txs])
 
+    for voucher in (product for product in acc_docs if product["type"] == "voucher"):
+        remaining = max(0, voucher["stock_qty"] - sold_acc_qty.get(voucher["id"], 0))
+        units = []
+        for index in range(1, remaining + 1):
+            barcode = f"VD-{voucher['sku']}-{index:06d}"
+            units.append({
+                "id": uid(),
+                "store_id": store_id,
+                "product_id": voucher["id"],
+                "imei": barcode,
+                "barcode": barcode,
+                "color": "",
+                "capacity": "",
+                "cost_price": voucher["cost_price"],
+                "sell_price": voucher["sell_price"],
+                "status": "in_stock",
+                "created_at": NOW - timedelta(days=3),
+                "sold_at": None,
+                "transaction_id": None,
+            })
+        if units:
+            await db.product_units.insert_many(units)
+
     for units in units_by_product.values():
         for unit in units:
             if unit["status"] == "sold":
@@ -324,17 +349,28 @@ async def seed() -> None:
                 )
 
     for acc in acc_docs:
+        if acc["type"] == "voucher":
+            continue
         sold = sold_acc_qty.get(acc["id"], 0)
         if sold:
             await db.products.update_one({"id": acc["id"]}, {"$inc": {"stock_qty": -sold}})
 
-    await ensure_indexes()
-    print(f"Seeded demo store: {len(product_ids)} handphone, {len(ACCESSORIES)} aksesoris, {len(VOUCHERS)} voucher pulsa, {len(txs)} transaksi.")
+    print(f"Seeded demo store: {len(product_ids)} handphone, {len(ACCESSORIES)} aksesoris, {len(VOUCHERS)} voucher data, {len(txs)} transaksi.")
     print(f"  Pemilik: {DEMO_OWNER_EMAIL} / {DEMO_PASSWORD}")
     print(f"  Kasir  : {DEMO_CASHIER_EMAIL} / {DEMO_PASSWORD}")
 
 
 if __name__ == "__main__":
+    if os.environ.get("VERCEL") == "1":
+        raise SystemExit("Demo data seeding is disabled on Vercel.")
+
     import asyncio
 
-    asyncio.run(seed())
+    async def main() -> None:
+        try:
+            await ensure_indexes()
+            await seed()
+        finally:
+            await client.close()
+
+    asyncio.run(main())

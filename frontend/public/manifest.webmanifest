@@ -1,6 +1,6 @@
 {
-  "name": "KasirKu — Kasir Toko Handphone & Aksesoris",
-  "short_name": "KasirKu",
+  "name": "KasirKu - Family App",
+  "short_name": "Family App",
   "description": "Aplikasi kasir untuk toko handphone dan aksesoris: transaksi tunai & QRIS, stok unit IMEI, laporan harian, dan mode offline.",
   "id": "/",
   "start_url": "/",

@@ -1,14 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   CalendarDays,
+  ClipboardList,
   CloudOff,
   History,
   LogOut,
+  Maximize,
+  Minimize,
   Package,
   RefreshCw,
   ScrollText,
+  Settings,
   ShoppingCart,
   Store,
   Users,
@@ -22,6 +26,7 @@ import { formatRupiah } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
@@ -31,8 +36,10 @@ const NAV_ITEMS = [
   { to: "/transactions", label: "Riwayat", icon: History, testid: "nav-transactions-link", action: "transaction:read" },
   { to: "/reports/daily", label: "Laporan Harian", icon: CalendarDays, testid: "nav-daily-report-link", action: "report:read" },
   { to: "/reports", label: "Ringkasan", icon: BarChart3, testid: "nav-reports-link", action: "report:read" },
+  { to: "/attendance-report", label: "Lap. Absensi", icon: ClipboardList, testid: "nav-attendance-report-link", action: "user:manage" },
   { to: "/users", label: "Pengguna", icon: Users, testid: "nav-users-link", action: "user:manage" },
   { to: "/activity", label: "Aktivitas", icon: ScrollText, testid: "nav-activity-link", action: "user:manage" },
+  { to: "/settings", label: "Pengaturan", icon: Settings, testid: "nav-settings-link", action: "user:manage" },
 ];
 
 function navClassName({ isActive }: { isActive: boolean }) {
@@ -46,10 +53,30 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const { user, store, logout, can } = useAuth();
   const { online, pending, pendingCount, failedCount, syncing, flush, discard } = useOfflineSync();
   const [queueOpen, setQueueOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const navigate = useNavigate();
 
   const navItems = NAV_ITEMS.filter((item) => can(item.action));
   const queueTotal = pendingCount + failedCount;
+  const fullscreenSupported = typeof document !== "undefined" && document.fullscreenEnabled;
+
+  useEffect(() => {
+    const syncFullscreenState = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      toast.error("Mode layar penuh tidak dapat diubah di browser ini.");
+    }
+  };
 
   return (
     <div className="min-h-svh bg-[#F8FAFC] text-slate-900">
@@ -61,7 +88,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="hidden leading-tight sm:block">
               <p className="font-heading max-w-48 truncate text-base font-extrabold tracking-tight" data-testid="shell-store-name">
-                {store?.name ?? "KasirKu"}
+                {store?.name ?? "KasirKu - Family Cell"}
               </p>
               <p className="text-xs text-slate-500">Sistem POS Handphone &amp; Aksesoris</p>
             </div>
@@ -78,6 +105,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
           <div className="ml-auto flex items-center gap-2">
             <InstallAppButton />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={isFullscreen ? "Keluar dari layar penuh" : "Tampilkan layar penuh"}
+              title={isFullscreen ? "Keluar dari layar penuh" : "Tampilkan layar penuh"}
+              data-testid="fullscreen-toggle-btn"
+              disabled={!fullscreenSupported}
+              onClick={() => void toggleFullscreen()}
+            >
+              {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            </Button>
             {/* Connectivity + offline queue */}
             <button
               type="button"
@@ -184,7 +222,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                     <div className="min-w-0">
                       <p className="font-mono text-sm font-bold">{formatRupiah(sale.total)}</p>
                       <p className="truncate text-xs text-slate-500">
-                        {sale.item_count} item · {sale.payload.payment_method === "tunai" ? "Tunai" : "QRIS"} ·{" "}
+                         {sale.item_count} item · {sale.payload.payment_method === "tunai" ? "Tunai" : sale.payload.payment_method === "qris" ? "QRIS" : "Piutang"} ·{" "}
                         {new Date(sale.created_at).toLocaleString("id-ID")}
                       </p>
                       {sale.error ? (

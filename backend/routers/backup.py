@@ -22,7 +22,7 @@ router = APIRouter(prefix="/backup")
 
 COLLECTIONS = ("products", "product_units", "transactions", "activity_logs")
 
-# dataset -> (mongo collection, {field: Indonesian column header}).
+# dataset -> (database collection, {field: Indonesian column header}).
 # Internal ids are left out: the export is for reading in Excel, not for re-import.
 DATASETS: dict[str, tuple[str, dict[str, str]]] = {
     "products": (
@@ -199,9 +199,9 @@ async def export_xlsx(
             elif field == "status":
                 value = STATUS_LABELS.get(value or "selesai", value or "selesai")
             elif field == "type":
-                value = {"handphone": "Handphone", "aksesoris": "Aksesoris", "voucher": "Voucher Pulsa"}.get(value, value)
+                value = {"handphone": "Handphone", "aksesoris": "Aksesoris", "voucher": "Voucher Data"}.get(value, value)
             elif field == "payment_method":
-                value = {"tunai": "Tunai", "qris": "QRIS"}.get(value, value)
+                value = {"tunai": "Tunai", "qris": "QRIS", "piutang": "Piutang"}.get(value, value)
             row[header] = "" if value is None else value
         rows.append(row)
 

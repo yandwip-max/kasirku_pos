@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
@@ -13,6 +13,7 @@ from models.report import (
     ReportSummary,
     TopProduct,
 )
+from models.transaction import Transaction
 
 router = APIRouter(prefix="/reports")
 WIB = ZoneInfo("Asia/Jakarta")
@@ -28,6 +29,38 @@ def _item_cogs(item: dict) -> int:
 
 def _item_profit(item: dict) -> int:
     return item["subtotal"] - int(item.get("cost") or 0) * item["qty"]
+
+
+@router.get("/daily/{work_date}/transactions", response_model=list[Transaction])
+async def daily_transactions(
+    work_date: str,
+    principal: Principal = Depends(require("report:read")),
+    repo: ScopedRepo = Depends(scoped_repo),
+):
+    """All transactions created on one store business date, including voided records."""
+    try:
+        day = date.fromisoformat(work_date)
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="Format tanggal harus YYYY-MM-DD") from exc
+    start = datetime.combine(day, time.min, tzinfo=WIB).astimezone(timezone.utc)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=WIB).astimezone(timezone.utc)
+    docs = await repo.find(
+        "transactions", {"created_at": {"$gte": start, "$lt": end}}
+    ).sort("created_at", -1).to_list(1000)
+    return [
+        Transaction(
+            **{
+                **doc,
+                "created_at": _aware(doc["created_at"]),
+                "due_date": _aware(doc["due_date"]) if doc.get("due_date") else None,
+                "piutang_paid_at": _aware(doc["piutang_paid_at"]) if doc.get("piutang_paid_at") else None,
+                "voided_at": _aware(doc["voided_at"]) if doc.get("voided_at") else None,
+            }
+        )
+        for doc in docs
+    ]
 
 
 @router.get("/summary", response_model=ReportSummary)
@@ -46,12 +79,18 @@ async def report_summary(
     total_cogs = 0
     total_profit = 0
     phones_sold = 0
+    piutang_paid = 0
+    piutang_unpaid = 0
     daily: dict[str, dict] = {}
     payment: dict[str, dict] = {}
     products: dict[str, dict] = {}
     for doc in docs:
         created = _aware(doc["created_at"])
         total_revenue += doc["total"]
+        if doc.get("payment_method") == "piutang":
+            paid = min(doc["total"], max(0, int(doc.get("amount_paid") or 0)))
+            piutang_paid += paid
+            piutang_unpaid += doc["total"] - paid
         for item in doc["items"]:
             profit = _item_profit(item)
             total_profit += profit
@@ -85,6 +124,8 @@ async def report_summary(
         transaction_count=len(docs),
         phones_sold=phones_sold,
         avg_transaction=total_revenue // len(docs) if docs else 0,
+        piutang_paid=piutang_paid,
+        piutang_unpaid=piutang_unpaid,
         daily=daily_series,
         payment_breakdown=[PaymentPoint(method=method, **values) for method, values in payment.items()],
         top_products=[TopProduct(name=name, **values) for name, values in top],
@@ -109,11 +150,19 @@ async def daily_report(
     for doc in docs:
         day = _aware(doc["created_at"]).astimezone(WIB).strftime("%Y-%m-%d")
         bucket = buckets.setdefault(
-            day, {"revenue": 0, "cogs": 0, "profit": 0, "transactions": 0, "items_sold": 0, "phones_sold": 0, "cash": 0, "qris": 0}
+            day, {"revenue": 0, "cogs": 0, "profit": 0, "transactions": 0, "items_sold": 0, "phones_sold": 0, "cash": 0, "qris": 0, "piutang": 0, "piutang_paid": 0, "piutang_unpaid": 0}
         )
         bucket["revenue"] += doc["total"]
         bucket["transactions"] += 1
-        bucket["cash" if doc["payment_method"] == "tunai" else "qris"] += doc["total"]
+        if doc["payment_method"] == "tunai":
+            bucket["cash"] += doc["total"]
+        elif doc["payment_method"] == "qris":
+            bucket["qris"] += doc["total"]
+        else:
+            bucket["piutang"] += doc["total"]
+            paid = min(doc["total"], max(0, int(doc.get("amount_paid") or 0)))
+            bucket["piutang_paid"] += paid
+            bucket["piutang_unpaid"] += doc["total"] - paid
         for item in doc["items"]:
             bucket["profit"] += _item_profit(item)
             bucket["cogs"] += _item_cogs(item)

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
-const TYPE_LABEL: Record<string, string> = { handphone: "Handphone", aksesoris: "Aksesoris", voucher: "Voucher Pulsa" };
+const TYPE_LABEL: Record<string, string> = { handphone: "Handphone", aksesoris: "Aksesoris", voucher: "Voucher Data" };
 
 /** Low-stock warning for the POS screen: anything whose sellable stock has fallen
  * below its "batas stok menipis". Quantity-based items (aksesoris & voucher) run out
@@ -83,7 +83,7 @@ export default function LowStockAlert() {
                       : "border-amber-300 bg-amber-100 text-amber-800",
                   )}
                 >
-                  {p.stock === 0 ? "Habis" : `${p.stock} ${p.type === "handphone" ? "unit" : "pcs"}`}
+                    {p.stock === 0 ? "Habis" : `${p.stock} ${p.type === "aksesoris" ? "pcs" : "unit"}`}
                 </Badge>
               </div>
             ))}

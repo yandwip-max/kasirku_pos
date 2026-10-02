@@ -9,9 +9,9 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pymongo import ReturnDocument
-
 from lib.audit import log_activity
 from lib.auth import Principal, require
+from lib.db import db
 from lib.scoped import ScopedRepo, scoped_repo
 from models.category import Category, CategoryIn, CategoryWithCount
 from models.audit import ActivityChange
@@ -38,6 +38,7 @@ async def list_categories(
 
 
 @router.post("", response_model=Category, status_code=201)
+@db.transactional
 async def create_category(
     input: CategoryIn,
     principal: Principal = Depends(require("product:write")),
@@ -55,6 +56,7 @@ async def create_category(
 
 
 @router.patch("/{category_id}", response_model=Category)
+@db.transactional
 async def rename_category(
     category_id: str,
     input: CategoryIn,
@@ -86,6 +88,7 @@ async def rename_category(
 
 
 @router.delete("/{category_id}", status_code=204)
+@db.transactional
 async def delete_category(
     category_id: str,
     principal: Principal = Depends(require("product:write")),

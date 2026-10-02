@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, Coins, Receipt, TrendingUp, Wallet } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock3, Coins, Eye, Receipt, TrendingUp, Wallet } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { apiGet } from "@/lib/api";
-import type { DailyReport } from "@/lib/types";
-import { formatCompact, formatDateShort, formatRupiah } from "@/lib/format";
+import type { DailyReport, Transaction } from "@/lib/types";
+import { formatCompact, formatDateShort, formatDateTime, formatRupiah } from "@/lib/format";
 import AppShell from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
@@ -32,9 +34,15 @@ function Kpi({ icon, label, value, hint }: { icon: React.ReactNode; label: strin
 
 export default function DailyReportPage() {
   const [days, setDays] = useState(14);
+  const [detailDate, setDetailDate] = useState<string | null>(null);
   const reportQuery = useQuery({
     queryKey: ["reports", "daily", days],
     queryFn: () => apiGet<DailyReport>(`/reports/daily?days=${days}`),
+  });
+  const dayTransactions = useQuery({
+    queryKey: ["reports", "daily", detailDate, "transactions"],
+    queryFn: () => apiGet<Transaction[]>(`/reports/daily/${detailDate}/transactions`),
+    enabled: detailDate !== null,
   });
   const report = reportQuery.data;
   // oldest → newest for the chart; the table stays newest-first
@@ -76,7 +84,7 @@ export default function DailyReportPage() {
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
           <Kpi
             icon={<TrendingUp className="h-4 w-4" />}
             label="Total Penjualan"
@@ -126,6 +134,8 @@ export default function DailyReportPage() {
             value={report ? (report.best_day ? formatDateShort(report.best_day) : "—") : null}
             hint={report?.best_day ? "Omset tertinggi" : undefined}
           />
+          <Kpi icon={<CheckCircle2 className="h-4 w-4" />} label="Piutang Lunas" value={report ? formatRupiah(report.rows.reduce((sum, row) => sum + row.piutang_paid, 0)) : null} />
+          <Kpi icon={<Clock3 className="h-4 w-4" />} label="Sisa Piutang" value={report ? formatRupiah(report.rows.reduce((sum, row) => sum + row.piutang_unpaid, 0)) : null} />
         </div>
 
         <Card>
@@ -176,18 +186,20 @@ export default function DailyReportPage() {
                   <TableHead className="text-right">Transaksi</TableHead>
                   <TableHead className="text-right">Item</TableHead>
                   <TableHead className="text-right">Tunai</TableHead>
-                  <TableHead className="text-right">QRIS</TableHead>
-                  <TableHead className="text-right">Total Penjualan</TableHead>
+                   <TableHead className="text-right">QRIS</TableHead>
+                   <TableHead className="text-right">Piutang</TableHead>
+                   <TableHead className="text-right">Total Penjualan</TableHead>
                   <TableHead className="text-right">Modal (HPP)</TableHead>
                   <TableHead className="text-right">Keuntungan</TableHead>
                   <TableHead className="text-right">Margin</TableHead>
+                  <TableHead className="text-right">Detail</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {reportQuery.isLoading &&
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={9}>
+                      <TableCell colSpan={11}>
                         <div className="h-8 animate-pulse rounded bg-slate-100" />
                       </TableCell>
                     </TableRow>
@@ -205,8 +217,9 @@ export default function DailyReportPage() {
                     <TableCell className="text-right font-mono text-sm">{row.transactions}</TableCell>
                     <TableCell className="text-right font-mono text-sm">{row.items_sold}</TableCell>
                     <TableCell className="text-right font-mono text-xs text-slate-500">{formatRupiah(row.cash)}</TableCell>
-                    <TableCell className="text-right font-mono text-xs text-slate-500">{formatRupiah(row.qris)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm font-bold">{formatRupiah(row.revenue)}</TableCell>
+                     <TableCell className="text-right font-mono text-xs text-slate-500">{formatRupiah(row.qris)}</TableCell>
+                     <TableCell className="text-right font-mono text-xs text-amber-700">{formatRupiah(row.piutang)}</TableCell>
+                     <TableCell className="text-right font-mono text-sm font-bold">{formatRupiah(row.revenue)}</TableCell>
                     <TableCell className="text-right font-mono text-sm text-amber-700" data-testid="daily-report-row-cogs">
                       {formatRupiah(row.cogs)}
                     </TableCell>
@@ -214,11 +227,16 @@ export default function DailyReportPage() {
                       {formatRupiah(row.profit)}
                     </TableCell>
                     <TableCell className="text-right text-sm text-slate-500">{row.margin_percent}%</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" onClick={() => setDetailDate(row.date)}>
+                        <Eye className="h-3.5 w-3.5" /> Detail
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
                 {report && report.rows.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-10 text-center text-sm text-slate-400">
+                    <TableCell colSpan={11} className="py-10 text-center text-sm text-slate-400">
                       Belum ada penjualan pada periode ini.
                     </TableCell>
                   </TableRow>
@@ -227,6 +245,72 @@ export default function DailyReportPage() {
             </Table>
           </CardContent>
         </Card>
+
+        <Dialog open={detailDate !== null} onOpenChange={(open) => { if (!open) setDetailDate(null); }}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+            <DialogHeader>
+              <DialogTitle>Transaksi {detailDate ? formatDateShort(detailDate) : ""}</DialogTitle>
+              <DialogDescription>
+                {dayTransactions.data ? `${dayTransactions.data.length} transaksi pada tanggal ini` : "Rincian transaksi harian"}
+              </DialogDescription>
+            </DialogHeader>
+            {dayTransactions.isLoading ? (
+              <div className="h-24 animate-pulse rounded bg-slate-100" />
+            ) : dayTransactions.isError ? (
+              <p className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                Gagal memuat rincian transaksi. Tutup dialog dan coba kembali.
+              </p>
+            ) : dayTransactions.data?.length ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>No. Transaksi / Waktu</TableHead>
+                      <TableHead>Pembeli</TableHead>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Pembayaran</TableHead>
+                      <TableHead>Tanggal Pelunasan</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dayTransactions.data.map((transaction) => (
+                      <TableRow key={transaction.id}>
+                        <TableCell>
+                          <div className="font-medium">{transaction.transaction_number}</div>
+                          <div className="text-xs text-slate-500">{formatDateTime(transaction.created_at)}</div>
+                          {transaction.status === "void" ? <Badge variant="outline" className="mt-1 border-rose-200 text-rose-700">{transaction.void_type === "retur" ? "Retur" : "Dibatalkan"}</Badge> : null}
+                        </TableCell>
+                        <TableCell>{transaction.customer_name || "-"}</TableCell>
+                        <TableCell className="min-w-48">
+                          {transaction.items.map((item, index) => (
+                            <div key={`${item.product_id}-${index}`} className="text-sm">
+                              {item.product_name} × {item.qty}
+                            </div>
+                          ))}
+                        </TableCell>
+                        <TableCell>
+                          {transaction.payment_method === "tunai" ? "Tunai" : transaction.payment_method === "qris" ? "QRIS" : "Piutang"}
+                          {transaction.payment_method === "piutang" ? (
+                            <div className={transaction.piutang_status === "paid" ? "text-xs text-emerald-700" : "text-xs text-amber-700"}>
+                              {transaction.piutang_status === "paid" ? "Lunas" : "Belum lunas"}
+                            </div>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="text-sm text-slate-600">
+                          {transaction.piutang_paid_at ? formatDateTime(transaction.piutang_paid_at) : "-"}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold">{formatRupiah(transaction.total)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="py-10 text-center text-sm text-slate-500">Tidak ada transaksi pada tanggal ini.</p>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </AppShell>
   );

@@ -4,7 +4,7 @@ Model (deliberately minimal — see memory/spec.md):
   * one user belongs to exactly ONE store (`store_id`), so email is globally unique
   * two tenant roles: "pemilik" (owner) and "kasir" (cashier)
   * there is no platform/super-admin scope
-The principal is re-read from Mongo on every request, so a role change or a deleted
+The principal is re-read from PostgreSQL on every request, so a role change or a deleted
 user takes effect immediately instead of at token expiry.
 """
 

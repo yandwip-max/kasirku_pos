@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FolderTree, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Barcode, FolderTree, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import type { Product, ProductPayload, ProductType, ProductUnit } from "@/lib/types";
@@ -26,18 +26,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-const ACCESSORY_CATEGORIES = ["Aksesoris & Casing", "Charger & Kabel", "Audio / TWS", "Voucher & Pulsa", "Lainnya"];
+const ACCESSORY_CATEGORIES = ["Aksesoris & Casing", "Charger & Kabel", "Audio / TWS", "Voucher Data", "Lainnya"];
+const PULSA_PROVIDERS = ["Telkomsel", "Indosat Ooredoo Hutchison", "XL Axiata", "Axis", "Smartfren"];
+const EWALLET_PROVIDERS = ["DANA", "GoPay", "OVO", "ShopeePay", "LinkAja"];
+const PULSA_DENOMINATIONS = [5000, 10000, 15000, 20000, 25000, 30000, 40000, 50000, 75000, 100000, 150000, 200000, 300000, 500000, 1000000];
+const PLN_DENOMINATIONS = [5000, 10000, 20000, 50000, 100000, 250000, 500000, 1000000];
 const TYPE_LABELS: Record<ProductType, string> = {
   handphone: "Handphone",
   aksesoris: "Aksesoris",
-  voucher: "Voucher Pulsa",
+  voucher: "Voucher Data",
+  lainnya: "Lainnya",
+  non_fisik: "Non-Fisik",
 };
 
 const TYPE_FILTERS = [
   { id: "", label: "Semua Tipe", testid: "product-filter-type-all" },
   { id: "handphone", label: "Handphone", testid: "product-filter-type-handphone" },
   { id: "aksesoris", label: "Aksesoris", testid: "product-filter-type-aksesoris" },
-  { id: "voucher", label: "Voucher Pulsa", testid: "product-filter-type-voucher" },
+  { id: "voucher", label: "Voucher Data", testid: "product-filter-type-voucher" },
+  { id: "lainnya", label: "Lainnya", testid: "product-filter-type-lainnya" },
+  { id: "non_fisik", label: "Non-Fisik", testid: "product-filter-type-non-fisik" },
 ] as const;
 
 /** Money/quantity fields are digit-only text inputs: a native number input reads the
@@ -83,13 +91,18 @@ interface FormState {
   name: string;
   brand: string;
   type: ProductType;
+  service_category: "pulsa" | "ewallet" | "pln";
+  provider: string;
+  denomination: string;
   category: string;
   sku: string;
+  barcode: string;
   cost_price: string;
   sell_price: string;
   wholesale_price: string;
   stock_qty: string;
   min_stock: string;
+  track_imei: boolean;
 }
 
 function emptyForm(): FormState {
@@ -97,13 +110,18 @@ function emptyForm(): FormState {
     name: "",
     brand: "",
     type: "aksesoris",
+    service_category: "pulsa",
+    provider: PULSA_PROVIDERS[0],
+    denomination: String(PULSA_DENOMINATIONS[0]),
     category: ACCESSORY_CATEGORIES[0],
     sku: "",
+    barcode: "",
     cost_price: "",
     sell_price: "",
-    wholesale_price: "",
+     wholesale_price: "",
     stock_qty: "0",
     min_stock: "5",
+    track_imei: false,
   };
 }
 
@@ -112,13 +130,18 @@ function productToForm(p: Product): FormState {
     name: p.name,
     brand: p.brand,
     type: p.type,
+    service_category: p.service_category ?? "pulsa",
+    provider: p.provider ?? PULSA_PROVIDERS[0],
+    denomination: p.denomination ? String(p.denomination) : "",
     category: p.category,
     sku: p.sku,
+    barcode: p.barcode ?? "",
     cost_price: String(p.cost_price ?? 0),
     sell_price: String(p.sell_price),
     wholesale_price: String(p.wholesale_price ?? 0),
     stock_qty: String(p.stock_qty),
     min_stock: String(p.min_stock),
+    track_imei: p.track_imei ?? false,
   };
 }
 
@@ -135,6 +158,10 @@ function ProductFormDialog({
   const queryClient = useQueryClient();
   const folderNames = (useCategories().data ?? []).map((c) => c.name);
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
+
+  useEffect(() => {
+    if (open) setForm(product ? productToForm(product) : emptyForm());
+  }, [open, product]);
 
   const save = useMutation({
     mutationFn: (payload: ProductPayload) =>
@@ -157,13 +184,18 @@ function ProductFormDialog({
       name: form.name.trim(),
       brand: form.brand.trim(),
       type: form.type,
+      service_category: form.type === "non_fisik" ? form.service_category : null,
+      provider: form.type === "non_fisik" ? form.provider : "",
+      denomination: form.type === "non_fisik" ? parseRupiah(form.denomination) : null,
       category: form.category,
       sku: form.sku.trim(),
+      barcode: form.barcode.trim(),
       cost_price: parseRupiah(form.cost_price),
       sell_price: parseRupiah(form.sell_price),
       wholesale_price: form.type === "voucher" ? parseRupiah(form.wholesale_price) : 0,
-      stock_qty: form.type === "handphone" ? 0 : parseRupiah(form.stock_qty),
+      stock_qty: form.type === "handphone" || form.type === "voucher" || form.type === "non_fisik" || form.track_imei ? 0 : parseRupiah(form.stock_qty),
       min_stock: parseRupiah(form.min_stock) || 5,
+      track_imei: form.track_imei,
     });
   }
 
@@ -175,14 +207,37 @@ function ProductFormDialog({
           <DialogDescription>
             {product
               ? "Perbarui informasi dan harga produk."
-              : "Daftarkan handphone baru (stok per unit IMEI) atau aksesoris (stok jumlah)."}
+              : "Daftarkan produk fisik atau layanan digital tanpa stok fisik."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3">
             <div className="grid gap-2">
               <Label>Tipe Produk</Label>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Jenis produk">
+                {[{ physical: true, label: "Fisik" }, { physical: false, label: "Non-Fisik" }].map((option) => (
+                  <Button
+                    key={option.label}
+                    type="button"
+                    variant={(form.type !== "non_fisik") === option.physical ? "default" : "outline"}
+                    disabled={product !== null}
+                    aria-pressed={(form.type !== "non_fisik") === option.physical}
+                    onClick={() => setForm((current) => ({
+                      ...current,
+                      type: option.physical ? "aksesoris" : "non_fisik",
+                      track_imei: false,
+                      service_category: option.physical ? current.service_category : "pulsa",
+                      category: option.physical ? ACCESSORY_CATEGORIES[0] : "Pulsa",
+                      provider: option.physical ? current.provider : PULSA_PROVIDERS[0],
+                      denomination: option.physical ? current.denomination : String(PULSA_DENOMINATIONS[0]),
+                    }))}
+                  >
+                    {option.label}
+                  </Button>
+                ))}
+              </div>
+              {form.type !== "non_fisik" ? (
               <Select
                 value={form.type}
                 disabled={product !== null}
@@ -191,11 +246,12 @@ function ProductFormDialog({
                   setForm((f) => ({
                     ...f,
                     type,
+                    track_imei: type === "handphone" || type === "voucher",
                     category:
                       type === "handphone"
                         ? "Handphone"
                         : type === "voucher"
-                          ? "Voucher & Pulsa"
+                          ? "Voucher Data"
                           : ACCESSORY_CATEGORIES[0],
                   }));
                 }}
@@ -206,11 +262,36 @@ function ProductFormDialog({
                 <SelectContent>
                   <SelectItem value="handphone">Handphone (per IMEI)</SelectItem>
                   <SelectItem value="aksesoris">Aksesoris (jumlah)</SelectItem>
-                  <SelectItem value="voucher">Voucher Pulsa (grosir &amp; ritel)</SelectItem>
+                  <SelectItem value="voucher">Voucher Data (barcode per unit)</SelectItem>
+                  <SelectItem value="lainnya">Lainnya (jumlah)</SelectItem>
                 </SelectContent>
               </Select>
+              ) : (
+                <Select
+                  value={form.service_category}
+                  onValueChange={(value) => {
+                    const serviceCategory = value as FormState["service_category"];
+                    const provider = serviceCategory === "pulsa" ? PULSA_PROVIDERS[0] : serviceCategory === "ewallet" ? EWALLET_PROVIDERS[0] : "PLN";
+                    const denomination = serviceCategory === "pln" ? String(PLN_DENOMINATIONS[0]) : serviceCategory === "pulsa" ? String(PULSA_DENOMINATIONS[0]) : "";
+                    setForm((current) => ({
+                      ...current,
+                      service_category: serviceCategory,
+                      provider,
+                      denomination,
+                      category: serviceCategory === "pulsa" ? "Pulsa" : serviceCategory === "ewallet" ? "E-Wallet" : "Listrik PLN",
+                    }));
+                  }}
+                >
+                  <SelectTrigger data-testid="product-service-category-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pulsa">Pulsa</SelectItem>
+                    <SelectItem value="ewallet">E-Wallet</SelectItem>
+                    <SelectItem value="pln">Listrik PLN</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
-            <div className="grid gap-2">
+            {form.type !== "non_fisik" ? <div className="grid gap-2">
               <Label>Folder / Kategori</Label>
               <Select
                 value={form.category}
@@ -233,8 +314,63 @@ function ProductFormDialog({
                   )}
                 </SelectContent>
               </Select>
-            </div>
+            </div> : null}
+           </div>
+            {form.type !== "non_fisik" ? <div className="grid gap-2">
+              <Label className="flex items-center gap-2.5 font-medium">
+                <Checkbox
+                  id="product-track-imei"
+                  checked={form.track_imei}
+                  disabled={form.type === "handphone" || form.type === "voucher"}
+                  onCheckedChange={(checked) => set("track_imei", checked === true)}
+                  data-testid="product-track-imei-checkbox"
+                />
+                Tambah IMEI (lacak per unit)
+              </Label>
+              {form.type === "aksesoris" || form.type === "lainnya" ? (
+                <p className="-mt-1 text-xs text-slate-500">
+                  Aktifkan untuk melacat stok per unit IMEI/barcode (seperti handphone). Non-aktifkan untuk melacat
+                  stok per jumlah (pcs).
+                </p>
+              ) : (
+                <p className="-mt-1 text-xs text-slate-500">
+                  Tipe ini selalu dilacat per unit IMEI/barcode.
+                </p>
+              )}
+            </div> : null}
           </div>
+
+          {form.type === "non_fisik" && (
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-sky-100 bg-sky-50/50 p-3">
+              <div className="grid gap-2">
+                <Label htmlFor="service-provider">Provider</Label>
+                <Select value={form.provider} onValueChange={(value) => set("provider", value)}>
+                  <SelectTrigger id="service-provider" data-testid="product-service-provider-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(form.service_category === "pulsa" ? PULSA_PROVIDERS : form.service_category === "ewallet" ? EWALLET_PROVIDERS : ["PLN"]).map((provider) => (
+                      <SelectItem key={provider} value={provider}>{provider}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.service_category === "ewallet" ? (
+                <NumberField id="service-denomination" label="Nominal Manual (Rp)" value={form.denomination} onChange={(value) => set("denomination", value)} placeholder="Masukkan nominal" testid="product-service-denomination-input" />
+              ) : (
+                <div className="grid gap-2">
+                  <Label htmlFor="service-denomination">Nominal</Label>
+                  <Select value={form.denomination} onValueChange={(value) => set("denomination", value)}>
+                    <SelectTrigger id="service-denomination" data-testid="product-service-denomination-select"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(form.service_category === "pulsa" ? PULSA_DENOMINATIONS : PLN_DENOMINATIONS).map((amount) => (
+                        <SelectItem key={amount} value={String(amount)}>{formatRupiah(amount)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <p className="col-span-2 text-xs text-slate-600">Layanan non-fisik tidak memakai stok barang. Harga jual dan modal tetap dicatat untuk laporan.</p>
+            </div>
+          )}
 
           <div className="grid gap-2">
             <Label htmlFor="product-name">Nama Produk *</Label>
@@ -258,7 +394,25 @@ function ProductFormDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="product-barcode">Barcode Produk</Label>
+              <div className="relative">
+                <Barcode className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="product-barcode"
+                  value={form.barcode}
+                  onChange={(e) => set("barcode", e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+                  placeholder="Scan barcode produk umum (opsional)"
+                  className="pl-9 font-mono"
+                  data-testid="product-barcode-input"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className={form.type === "non_fisik" && form.service_category === "ewallet" ? "grid gap-3" : "grid grid-cols-2 gap-3"}>
             <NumberField
               id="product-cost"
               label="Harga Modal (Rp)"
@@ -267,14 +421,16 @@ function ProductFormDialog({
               placeholder="0"
               testid="product-cost-input"
             />
-            <NumberField
-              id="product-sell"
-              label={form.type === "voucher" ? "Harga Jual Ritel (Rp)" : "Harga Jual (Rp)"}
-              value={form.sell_price}
-              onChange={(v) => set("sell_price", v)}
-              placeholder="0"
-              testid="product-sell-input"
-            />
+            {!(form.type === "non_fisik" && form.service_category === "ewallet") && (
+              <NumberField
+                id="product-sell"
+                label={form.type === "voucher" ? "Harga Jual Ritel (Rp)" : "Harga Jual (Rp)"}
+                value={form.sell_price}
+                onChange={(v) => set("sell_price", v)}
+                placeholder="0"
+                testid="product-sell-input"
+              />
+            )}
           </div>
 
           {form.type === "voucher" && (
@@ -289,7 +445,7 @@ function ProductFormDialog({
             />
           )}
 
-          {(form.type === "aksesoris" || form.type === "voucher") && (
+          {(form.type === "aksesoris" || form.type === "lainnya") && !form.track_imei && (
             <div className="grid grid-cols-2 gap-3">
               <NumberField
                 id="product-stock"
@@ -310,15 +466,30 @@ function ProductFormDialog({
             </div>
           )}
 
-          {form.type === "handphone" && (
+          {form.type === "voucher" && (
+            <>
+              <p className="rounded-lg bg-sky-50 p-3 text-xs leading-relaxed text-sky-800">
+                Stok voucher data dicatat per kode unik. Simpan produk, lalu scan tiap barcode di Kelola Unit saat stok masuk.
+              </p>
+              <NumberField
+                id="product-min-stock"
+                label="Batas stok menipis (unit)"
+                value={form.min_stock}
+                onChange={(v) => set("min_stock", v)}
+                placeholder="5"
+                testid="product-min-stock-input"
+              />
+            </>
+          )}
+
+          {(form.type === "handphone" || (form.type === "aksesoris" && form.track_imei)) && (
             <p className="rounded-lg bg-sky-50 p-3 text-xs leading-relaxed text-sky-800">
-              Stok handphone dikelola per unit fisik. Setelah produk tersimpan, buka{" "}
+              Stok produk dikelola per unit fisik. Setelah produk tersimpan, buka{" "}
               <span className="font-semibold">Kelola Unit</span> untuk menambahkan IMEI, warna, dan kapasitas tiap unit.
             </p>
-          )}
-        </div>
+         )}
 
-        <DialogFooter>
+         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Batal
           </Button>
@@ -341,6 +512,7 @@ function UnitManagerDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [imei, setImei] = useState("");
+  const [barcode, setBarcode] = useState("");
   const [color, setColor] = useState("");
   const [capacity, setCapacity] = useState("");
   const [cost, setCost] = useState(product?.cost_price ? String(product.cost_price) : "");
@@ -357,7 +529,8 @@ function UnitManagerDialog({
   const addUnit = useMutation({
     mutationFn: () =>
       apiPost<ProductUnit>(`/products/${product?.id}/units`, {
-        imei: imei.trim(),
+        imei: product?.type === "voucher" ? barcode.trim() : imei.trim(),
+        barcode: barcode.trim() || undefined,
         color: color.trim(),
         capacity: capacity.trim(),
         cost_price: parseRupiah(cost),
@@ -366,8 +539,9 @@ function UnitManagerDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["units"] });
       queryClient.invalidateQueries({ queryKey: ["products"] });
-      toast.success("Stok unit IMEI berhasil ditambahkan");
+      toast.success(product?.type === "voucher" ? "Voucher data berhasil ditambahkan" : "Stok unit IMEI berhasil ditambahkan");
       setImei("");
+      setBarcode("");
       setColor("");
       setCapacity("");
       setCost(product?.cost_price ? String(product.cost_price) : "");
@@ -387,8 +561,8 @@ function UnitManagerDialog({
   });
 
   function submitUnit() {
-    if (!imei.trim()) {
-      toast.error("Nomor IMEI wajib diisi");
+    if (product?.type === "voucher" ? !barcode.trim() : !imei.trim()) {
+      toast.error(product?.type === "voucher" ? "Barcode voucher data wajib diisi" : "Nomor IMEI wajib diisi");
       return;
     }
     addUnit.mutate();
@@ -399,40 +573,65 @@ function UnitManagerDialog({
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl" data-testid="unit-manager-dialog">
         <DialogHeader>
           <DialogTitle>Kelola Unit — {product?.name}</DialogTitle>
-          <DialogDescription>Setiap unit fisik dibedakan lewat nomor IMEI, warna, dan kapasitas.</DialogDescription>
+          <DialogDescription>
+            {product?.type === "voucher"
+              ? "Scan barcode unik dari setiap voucher data yang masuk. Satu kode hanya bisa dijual satu kali."
+              : "Setiap unit handphone dibedakan lewat nomor IMEI, warna, dan kapasitas."}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 sm:grid-cols-2">
           <div className="grid gap-1 sm:col-span-2">
-            <Label htmlFor="unit-imei">No. IMEI *</Label>
+            <Label htmlFor="unit-imei">{product?.type === "voucher" ? "Barcode Voucher *" : "No. IMEI *"}</Label>
             <Input
               id="unit-imei"
-              value={imei}
-              onChange={(e) => setImei(e.target.value)}
-              placeholder="cth. 354912000000001"
-              data-testid="imei-input"
+              autoFocus
+              value={product?.type === "voucher" ? barcode : imei}
+              onChange={(e) => product?.type === "voucher" ? setBarcode(e.target.value) : setImei(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !addUnit.isPending && submitUnit()}
+              placeholder={product?.type === "voucher" ? "Scan barcode lalu Enter" : "Scan IMEI atau ketik manual"}
+              className="font-mono"
+              data-testid={product?.type === "voucher" ? "voucher-barcode-input" : "imei-input"}
             />
           </div>
-          <div className="grid gap-1">
-            <Label htmlFor="unit-color">Warna</Label>
-            <Input
-              id="unit-color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              placeholder="cth. Midnight Black"
-              data-testid="imei-color-input"
-            />
-          </div>
-          <div className="grid gap-1">
-            <Label htmlFor="unit-capacity">Kapasitas</Label>
-            <Input
-              id="unit-capacity"
-              value={capacity}
-              onChange={(e) => setCapacity(e.target.value)}
-              placeholder="cth. 256GB"
-              data-testid="imei-capacity-input"
-            />
-          </div>
+          {product?.type === "handphone" && (
+            <div className="grid gap-1 sm:col-span-2">
+              <Label htmlFor="unit-barcode">Barcode Unit (opsional)</Label>
+              <Input
+                id="unit-barcode"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+                placeholder="Scan barcode unit jika berbeda dari IMEI"
+                className="font-mono"
+                data-testid="phone-unit-barcode-input"
+              />
+            </div>
+          )}
+          {product?.type === "handphone" && (
+            <>
+              <div className="grid gap-1">
+                <Label htmlFor="unit-color">Warna</Label>
+                <Input
+                  id="unit-color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  placeholder="cth. Midnight Black"
+                  data-testid="imei-color-input"
+                />
+              </div>
+              <div className="grid gap-1">
+                <Label htmlFor="unit-capacity">Kapasitas</Label>
+                <Input
+                  id="unit-capacity"
+                  value={capacity}
+                  onChange={(e) => setCapacity(e.target.value)}
+                  placeholder="cth. 256GB"
+                  data-testid="imei-capacity-input"
+                />
+              </div>
+            </>
+          )}
           <NumberField
             id="unit-cost"
             label="Harga Modal (Rp)"
@@ -461,9 +660,9 @@ function UnitManagerDialog({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>No. IMEI</TableHead>
-                <TableHead>Warna</TableHead>
-                <TableHead>Kapasitas</TableHead>
+                <TableHead>{product?.type === "voucher" ? "Barcode" : "No. IMEI"}</TableHead>
+                {product?.type === "handphone" && <TableHead>Warna</TableHead>}
+                {product?.type === "handphone" && <TableHead>Kapasitas</TableHead>}
                 <TableHead className="text-right">Harga Modal</TableHead>
                 <TableHead className="text-right">Harga Jual</TableHead>
                 <TableHead>Status</TableHead>
@@ -473,16 +672,18 @@ function UnitManagerDialog({
             <TableBody>
               {unitsQuery.isLoading && (
                 <TableRow>
-                  <TableCell colSpan={7}>
+                  <TableCell colSpan={product?.type === "voucher" ? 5 : 7}>
                     <div className="h-6 animate-pulse rounded bg-slate-100" />
                   </TableCell>
                 </TableRow>
               )}
               {units.map((unit) => (
                 <TableRow key={unit.id}>
-                  <TableCell className="font-mono text-xs font-semibold">{unit.imei}</TableCell>
-                  <TableCell className="text-sm">{unit.color || "-"}</TableCell>
-                  <TableCell className="text-sm">{unit.capacity || "-"}</TableCell>
+                  <TableCell className="font-mono text-xs font-semibold">
+                    {product?.type === "voucher" ? unit.barcode || unit.imei : unit.imei}
+                  </TableCell>
+                  {product?.type === "handphone" && <TableCell className="text-sm">{unit.color || "-"}</TableCell>}
+                  {product?.type === "handphone" && <TableCell className="text-sm">{unit.capacity || "-"}</TableCell>}
                   <TableCell className="text-right font-mono text-xs">
                     {formatRupiah(unit.cost_price || (product?.cost_price ?? 0))}
                   </TableCell>
@@ -517,8 +718,8 @@ function UnitManagerDialog({
               ))}
               {!unitsQuery.isLoading && units.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-sm text-slate-400">
-                    Belum ada unit. Tambahkan unit IMEI pertama.
+                  <TableCell colSpan={product?.type === "voucher" ? 5 : 7} className="py-8 text-center text-sm text-slate-400">
+                    {product?.type === "voucher" ? "Belum ada voucher data. Scan barcode unit pertama." : "Belum ada unit. Tambahkan unit IMEI pertama."}
                   </TableCell>
                 </TableRow>
               )}
@@ -726,13 +927,13 @@ export default function ProductsPage() {
                     </TableRow>
                   ))}
                 {products.map((p) => {
-                  const low = p.stock < p.min_stock;
+                  const low = p.type !== "non_fisik" && p.stock < p.min_stock;
                   return (
                     <TableRow key={p.id}>
                       <TableCell>
                         <p className="font-medium">{p.name}</p>
                         <p className="text-xs text-slate-500">
-                          {p.brand || "-"} · {p.sku || "tanpa SKU"}
+                          {p.type === "non_fisik" ? `${p.provider} · ${p.service_category === "ewallet" ? "E-Wallet" : p.service_category === "pln" ? "Listrik PLN" : "Pulsa"}` : p.brand || "-"} · {p.sku || "tanpa SKU"}
                         </p>
                       </TableCell>
                       <TableCell>
@@ -751,7 +952,7 @@ export default function ProductsPage() {
                       </TableCell>
                       <TableCell className="text-sm text-slate-600">{p.category}</TableCell>
                       <TableCell className="text-right font-mono text-sm font-bold">
-                        {formatRupiah(p.sell_price)}
+                        {p.type === "non_fisik" && p.service_category === "ewallet" ? "Nominal fleksibel" : formatRupiah(p.sell_price)}
                         {p.type === "voucher" && p.wholesale_price > 0 ? (
                           <span className="block text-[11px] font-normal text-violet-600" data-testid="product-row-wholesale">
                             Grosir {formatRupiah(p.wholesale_price)}
@@ -767,13 +968,14 @@ export default function ProductsPage() {
                               : "border-emerald-200 bg-emerald-50 text-emerald-700",
                           )}
                         >
-                          {p.type === "handphone" ? `${p.stock} unit` : `${p.stock} pcs`}
-                          {low ? " · menipis" : ""}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          {p.type === "handphone" && (
+                          {p.type === "non_fisik" ? "Tanpa stok" : p.type === "handphone" || p.type === "voucher" || p.track_imei ? `${p.stock} unit` : `${p.stock} pcs`}
+                           {p.type === "voucher" && p.stock_qty > 0 ? ` · ${p.stock_qty} belum discan` : ""}
+                           {low ? " · menipis" : ""}
+                         </Badge>
+                       </TableCell>
+                       <TableCell className="text-right">
+                         <div className="flex justify-end gap-1">
+                           {(p.type === "handphone" || p.type === "voucher" || p.track_imei) && (
                             <Button variant="outline" size="sm" data-testid="unit-manage-btn" onClick={() => setUnitProduct(p)}>
                               Kelola Unit
                             </Button>

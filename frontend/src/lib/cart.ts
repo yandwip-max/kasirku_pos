@@ -6,6 +6,9 @@ import type { CartLine } from "./types";
  *  - aksesoris: the product price
  */
 export function linePrice(line: CartLine): number {
+  if (line.product.type === "non_fisik" && line.product.service_category === "ewallet") {
+    return line.serviceAmount ?? 0;
+  }
   if (line.unit && line.unit.sell_price > 0) return line.unit.sell_price;
   if (line.product.type === "voucher" && line.priceTier === "grosir") {
     return line.product.wholesale_price > 0 ? line.product.wholesale_price : line.product.sell_price;

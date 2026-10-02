@@ -19,6 +19,8 @@ def _now() -> datetime:
 class CartItemIn(BaseModel):
     product_id: str
     unit_id: Optional[str] = None  # required for handphone (serialized IMEI unit)
+    service_target: Optional[str] = None
+    service_amount: Optional[int] = Field(default=None, ge=1)
     qty: int = 1
     # Voucher lines pick a price tier; ignored for other product types.
     price_tier: PriceTier = "ritel"
@@ -30,14 +32,15 @@ class CartItemIn(BaseModel):
 
 class CheckoutIn(BaseModel):
     items: list[CartItemIn]
-    payment_method: Literal["tunai", "qris"] = "tunai"
-    amount_paid: Optional[int] = None  # tunai only; QRIS always settles at total
+    payment_method: Literal["tunai", "qris", "piutang"] = "tunai"
+    amount_paid: Optional[int] = None  # tunai: cash received; piutang: advance/partial (default 0); qris always settles at total
     customer_name: str = ""
     customer_phone: str = ""
     # Offline support: the PWA stamps a client-generated ref + the moment of sale so a
     # queued transaction replays exactly once and keeps its real timestamp.
     client_ref: Optional[str] = None
     offline_created_at: Optional[datetime] = None
+    due_date: Optional[datetime] = None  # for piutang
 
 
 class TransactionItemOut(BaseModel):
@@ -45,8 +48,14 @@ class TransactionItemOut(BaseModel):
     product_name: str
     unit_id: Optional[str] = None
     imei: Optional[str] = None
+    barcode: Optional[str] = None
     color: Optional[str] = None
     capacity: Optional[str] = None
+    service_category: Optional[str] = None
+    provider: Optional[str] = None
+    service_target: Optional[str] = None
+    service_amount: Optional[int] = None
+    pln_token: Optional[str] = None
     qty: int
     price: int  # unit price BEFORE discount (tier-aware)
     price_tier: PriceTier = "ritel"
@@ -81,6 +90,9 @@ class Transaction(BaseModel):
     cashier_name: str = "Kasir"
     client_ref: Optional[str] = None
     created_at: datetime = Field(default_factory=_now)
+    due_date: Optional[datetime] = None  # for piutang
+    piutang_status: Optional[Literal["unpaid", "paid"]] = None  # only set when payment_method == "piutang"
+    piutang_paid_at: Optional[datetime] = None  # time the remaining balance was fully settled
     # Void/retur bookkeeping — "selesai" is the normal state, legacy rows default to it.
     status: Literal["selesai", "void"] = "selesai"
     void_type: Optional[Literal["void", "retur"]] = None

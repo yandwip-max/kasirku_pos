@@ -29,6 +29,8 @@ class ReportSummary(BaseModel):
     transaction_count: int
     phones_sold: int
     avg_transaction: int
+    piutang_paid: int
+    piutang_unpaid: int
     daily: list[DailyPoint]
     payment_breakdown: list[PaymentPoint]
     top_products: list[TopProduct]
@@ -46,6 +48,9 @@ class DailyRow(BaseModel):
     phones_sold: int
     cash: int
     qris: int
+    piutang: int
+    piutang_paid: int
+    piutang_unpaid: int
     margin_percent: float
 
 

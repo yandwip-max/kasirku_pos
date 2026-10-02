@@ -8,6 +8,8 @@ import DailyReportPage from "@/pages/DailyReportPage";
 import ReportsPage from "@/pages/ReportsPage";
 import UsersPage from "@/pages/UsersPage";
 import ActivityLogPage from "@/pages/ActivityLogPage";
+import SettingsPage from "@/pages/SettingsPage";
+import AttendanceReportPage from "@/pages/AttendanceReportPage";
 import { Toaster } from "@/components/ui/sonner";
 
 // One <Route> per page in src/pages; BrowserRouter already wraps this in main.tsx.
@@ -71,10 +73,28 @@ export default function App() {
       />
 
       <Route
+        path="/settings"
+        element={
+          <RequirePermission action="user:manage">
+            <SettingsPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
         path="/activity"
         element={
           <RequirePermission action="user:manage">
             <ActivityLogPage />
+          </RequirePermission>
+        }
+      />
+
+      <Route
+        path="/attendance-report"
+        element={
+          <RequirePermission action="user:manage">
+            <AttendanceReportPage />
           </RequirePermission>
         }
       />

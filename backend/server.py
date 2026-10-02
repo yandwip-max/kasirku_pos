@@ -1,4 +1,3 @@
-import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, APIRouter
 from dotenv import load_dotenv
@@ -15,7 +14,7 @@ from datetime import datetime
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
+# Shared PostgreSQL connection
 from lib.db import client, db, ensure_indexes
 
 from routers.auth import router as auth_router
@@ -26,12 +25,14 @@ from routers.audit import router as audit_router
 from routers.backup import router as backup_router
 from routers.cron import router as cron_router
 from routers.categories import router as categories_router
+from routers.ai import router as ai_router
+from routers.attendance import router as attendance_router
 
 
 # Startup runs before the yield, shutdown after it. Add your own setup/teardown here.
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.index_task = asyncio.create_task(ensure_indexes())  # background: a big index build must not block boot
+    await ensure_indexes()
     yield
     client.close()
 
@@ -78,6 +79,8 @@ api_router.include_router(audit_router)
 api_router.include_router(backup_router)
 api_router.include_router(cron_router)
 api_router.include_router(categories_router)
+api_router.include_router(ai_router)
+api_router.include_router(attendance_router)
 
 # Include the router in the main app
 app.include_router(api_router)

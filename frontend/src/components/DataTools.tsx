@@ -196,7 +196,7 @@ export function BackupCard() {
         </div>
 
         <p className="rounded-lg border border-sky-100 bg-sky-50/60 p-2.5 text-[11px] leading-snug text-sky-900" data-testid="backup-weekly-email-note">
-          <strong>Laporan mingguan otomatis:</strong> setiap Minggu malam 20.00 WIB, ringkasan omzet, modal/HPP, laba,
+          <strong>Laporan mingguan otomatis:</strong> setiap Sabtu malam 21.30 WIB, ringkasan omzet, modal/HPP, laba,
           produk terlaris, dan peringatan stok menipis dikirim ke email akun Pemilik toko ini — tanpa perlu klik. Untuk
           arsip data, unduh cadangan di atas secara berkala.
         </p>

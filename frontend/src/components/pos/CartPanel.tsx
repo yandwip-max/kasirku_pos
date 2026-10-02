@@ -18,7 +18,7 @@ interface CartPanelProps {
   onCheckout: (name: string, phone: string) => void;
 }
 
-const lineKey = (line: CartLine) => line.unit?.id ?? `acc-${line.product.id}`;
+const lineKey = (line: CartLine) => line.serviceLineId ?? line.unit?.id ?? `acc-${line.product.id}`;
 
 function DiscountEditor({
   line,
@@ -156,11 +156,16 @@ export default function CartPanel({
                     {line.unit ? (
                       <>
                         <Badge variant="outline" className="mt-1 font-mono text-[10px]">
-                          IMEI {line.unit.imei}
+                          {line.product.type === "voucher" ? line.unit.barcode || line.unit.imei : `IMEI ${line.unit.imei}`}
                         </Badge>
                         <p className="mt-0.5 text-[11px] text-slate-500">
                           {line.unit.color} · {line.unit.capacity}
                         </p>
+                      </>
+                    ) : line.product.type === "non_fisik" ? (
+                      <>
+                        <p className="mt-1 text-[11px] text-slate-600">Tujuan: <span className="font-mono">{line.serviceTarget}</span></p>
+                        <p className="text-[11px] text-slate-500">Nominal layanan {formatRupiah(line.serviceAmount ?? line.product.denomination ?? 0)}</p>
                       </>
                     ) : (
                       <p className="text-[11px] text-slate-500">@ {formatRupiah(linePrice(line))}</p>
@@ -197,8 +202,8 @@ export default function CartPanel({
                 )}
 
                 <div className="mt-2 flex items-center justify-between">
-                  {line.unit ? (
-                    <span className="text-xs text-slate-400">1 unit</span>
+                  {line.unit || line.product.type === "non_fisik" ? (
+                    <span className="text-xs text-slate-400">1 layanan</span>
                   ) : (
                     <div className="flex items-center gap-1">
                       <Button

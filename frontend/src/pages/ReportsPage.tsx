@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, Coins, Receipt, Smartphone, TrendingUp, Wallet } from "lucide-react";
+import { BarChart3, CheckCircle2, Clock3, Coins, Receipt, Smartphone, TrendingUp, Wallet } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { apiGet } from "@/lib/api";
 import type { ReportSummary } from "@/lib/types";
@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { cn } from "@/lib/utils";
 
 const RANGES = [7, 30, 90];
-const METHOD_COLORS: Record<string, string> = { tunai: "#16A34A", qris: "#0284C7" };
+const METHOD_COLORS: Record<string, string> = { tunai: "#16A34A", qris: "#0284C7", piutang: "#D97706" };
 
 function KpiCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
@@ -71,7 +71,7 @@ export default function ReportsPage() {
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-4 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
           <KpiCard
             icon={<TrendingUp className="h-4 w-4" />}
             label="Omset Penjualan"
@@ -114,6 +114,16 @@ export default function ReportsPage() {
             label="Rata-rata Transaksi"
             value={summary ? formatRupiah(summary.avg_transaction) : null}
           />
+          <KpiCard
+            icon={<CheckCircle2 className="h-4 w-4" />}
+            label="Piutang Lunas"
+            value={summary ? formatRupiah(summary.piutang_paid) : null}
+          />
+          <KpiCard
+            icon={<Clock3 className="h-4 w-4" />}
+            label="Sisa Piutang"
+            value={summary ? formatRupiah(summary.piutang_unpaid) : null}
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -152,7 +162,7 @@ export default function ReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="font-heading text-base">Metode Pembayaran</CardTitle>
-              <CardDescription>Proporsi omset Tunai vs QRIS</CardDescription>
+              <CardDescription>Proporsi omset Tunai vs QRIS vs Piutang</CardDescription>
             </CardHeader>
             <CardContent>
               {summary ? (
@@ -173,16 +183,19 @@ export default function ReportsPage() {
                             <Cell key={entry.method} fill={METHOD_COLORS[entry.method] ?? "#6366F1"} />
                           ))}
                         </Pie>
-                        <Tooltip
-                          formatter={(value: number, name: string) => [formatRupiah(value), name === "tunai" ? "Tunai" : "QRIS"]}
-                        />
+                   <Tooltip
+                           formatter={(value: number, name: string) => [
+                             formatRupiah(value),
+                             name === "tunai" ? "Tunai" : name === "qris" ? "QRIS" : "Piutang",
+                           ]}
+                         />
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="flex flex-col items-center gap-1.5">
                       {summary.payment_breakdown.map((p) => (
                         <div key={p.method} className="flex items-center gap-2 text-sm">
                           <span className="h-3 w-3 rounded-sm" style={{ background: METHOD_COLORS[p.method] ?? "#6366F1" }} />
-                          <span className="font-medium">{p.method === "tunai" ? "Tunai" : "QRIS"}</span>
+                          <span className="font-medium">{p.method === "tunai" ? "Tunai" : p.method === "qris" ? "QRIS" : "Piutang"}</span>
                           <span className="text-slate-500">
                             {p.count} trx · {formatRupiah(p.revenue)}
                           </span>

@@ -1,9 +1,16 @@
 crons:
   - name: weekly-report
-    description: "Kirim ringkasan & pengingat cadangan data mingguan ke email Pemilik tiap Minggu 20.00 WIB"
-    cron: "0 20 * * 0"
+    description: "Kirim ringkasan & pengingat cadangan data mingguan ke email Pemilik tiap Sabtu 21.30 WIB"
+    cron: "30 21 * * 6"
     timezone: "Asia/Jakarta"
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     endpoint: "{{BASE_URL}}/api/cron/weekly-report"
+    method: POST
+    enabled: true
+  - name: daily-store-closing
+    description: "Kirim laporan transaksi ke pemilik setelah jam tutup lokal setiap toko"
+    cron: "* * * * *"
+    timezone: "UTC"
+    endpoint: "{{BASE_URL}}/api/cron/daily-store-closing"
     method: POST
     enabled: true

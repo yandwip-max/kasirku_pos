@@ -1,9 +1,8 @@
-"""API-bearing coverage for the voucher-pulsa price regression.
+"""API-bearing coverage for voucher-data per-unit stock and exact prices.
 
-Verifies POST /api/products stores exact integer cost/sell/wholesale prices
-for a Voucher Pulsa product (the reported bug: thousand-separator strings
-being misread as fractional numbers), and that the backend defensively
-coerces a genuinely fractional value instead of erroring.
+Verifies POST /api/products stores exact integer prices for a Voucher Data
+product while stock is tracked per unique barcode unit, and the backend
+defensively coerces a genuinely fractional value instead of erroring.
 """
 
 import uuid
@@ -30,7 +29,7 @@ def test_create_voucher_product_with_integer_prices(client, owner_token):
     """Plain integers (as the fixed UI now submits) must save exactly, no truncation/rounding."""
     suffix = uuid.uuid4().hex[:8]
     payload = {
-        "name": f"tscheck-voucher-int-{suffix}",
+        "name": f"tscheck-voucher-data-int-{suffix}",
         "brand": "Telkomsel",
         "type": "voucher",
         "sku": f"TSCHECK-VI-{suffix}",
@@ -46,7 +45,7 @@ def test_create_voucher_product_with_integer_prices(client, owner_token):
     assert body["cost_price"] == 13500
     assert body["sell_price"] == 16000
     assert body["wholesale_price"] == 14000
-    assert body["stock_qty"] == 100
+    assert body["stock_qty"] == 0
 
     # Confirm it is retrievable via GET with the same exact integer values.
     pid = body["id"]
@@ -64,7 +63,7 @@ def test_create_product_with_fractional_price_is_coerced_not_rejected(client, ow
     must be rounded/coerced, not rejected with 422 'data tidak valid'."""
     suffix = uuid.uuid4().hex[:8]
     payload = {
-        "name": f"tscheck-voucher-frac-{suffix}",
+        "name": f"tscheck-voucher-data-frac-{suffix}",
         "brand": "Telkomsel",
         "type": "voucher",
         "sku": f"TSCHECK-VF-{suffix}",

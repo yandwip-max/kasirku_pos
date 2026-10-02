@@ -36,10 +36,12 @@ export default function ImeiUnitDialog({ product, takenUnitIds, onClose, onPick 
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Smartphone className="h-4 w-4 text-[#0284C7]" />
-            Pilih Unit — {product?.name}
+            {product?.type === "voucher" ? "Pilih Barcode Voucher" : "Pilih Unit"} — {product?.name}
           </DialogTitle>
           <DialogDescription>
-            Setiap unit handphone dibedakan dengan nomor IMEI. Pilih unit fisik yang dijual.
+            {product?.type === "voucher"
+              ? "Pilih kode voucher data unik yang akan dijual."
+              : "Setiap unit dibedakan dengan nomor IMEI. Pilih unit fisik yang dijual."}
           </DialogDescription>
         </DialogHeader>
 
@@ -75,10 +77,12 @@ export default function ImeiUnitDialog({ product, takenUnitIds, onClose, onPick 
                 )}
               >
                 <div>
-                  <p className="font-mono text-sm font-semibold">IMEI {unit.imei}</p>
-                  <p className="text-xs text-slate-500">
-                    {unit.color || "Warna -"} · {unit.capacity || "Kapasitas -"}
-                  </p>
+                  <p className="font-mono text-sm font-semibold">
+                {product?.type === "voucher" ? unit.barcode || unit.imei : `IMEI ${unit.imei}`}
+               </p>
+               {(product?.type === "handphone" || product?.track_imei) && (
+                 <p className="text-xs text-slate-500">{unit.color || "Warna -"} · {unit.capacity || "Kapasitas -"}</p>
+               )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="font-mono text-sm font-bold">

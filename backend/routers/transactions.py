@@ -8,9 +8,11 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from lib.audit import log_activity
 from lib.auth import Principal, mask_cost, require
+from lib.db import db
 from lib.scoped import ScopedRepo, scoped_repo
 from models.transaction import CartItemIn, CheckoutIn, Transaction, TransactionItemOut, VoidIn
 from models.transaction_report import TransactionRangeReport
@@ -18,7 +20,7 @@ from models.transaction_report import TransactionRangeReport
 router = APIRouter(prefix="/transactions")
 WIB = ZoneInfo("Asia/Jakarta")
 
-# Stock for these types is a plain quantity; handphones are tracked per IMEI unit.
+# Accessories use quantities; handphones and voucher data are tracked per scanned unit.
 QTY_TYPES = ("aksesoris", "voucher")
 
 
@@ -39,6 +41,8 @@ def _trx_out(doc: dict, principal: Principal) -> Transaction:
             "gross_total": gross,
             "discount_total": doc.get("discount_total", 0),
             "created_at": _aware(doc["created_at"]),
+            "due_date": _aware(doc["due_date"]) if doc.get("due_date") else None,
+            "piutang_paid_at": _aware(doc["piutang_paid_at"]) if doc.get("piutang_paid_at") else None,
             "profit": mask_cost(principal, doc.get("profit", 0)),
             "status": doc.get("status") or "selesai",
             "void_reason": doc.get("void_reason", ""),
@@ -49,7 +53,7 @@ def _trx_out(doc: dict, principal: Principal) -> Transaction:
 
 
 def _range_filter(start: str, end: str) -> dict:
-    """Mongo filter for a YYYY-MM-DD..YYYY-MM-DD range, inclusive, in shop time.
+    """Database filter for a YYYY-MM-DD..YYYY-MM-DD range, inclusive, in shop time.
 
     Dates are parsed server-side (WIB) so a report never shifts with the device clock.
     """
@@ -96,6 +100,7 @@ def _resolve_discount(item: CartItemIn, gross: int, product_name: str) -> int:
 async def list_transactions(
     period: str = "30d",
     method: str = "",
+    piutang_status: str = "",
     q: str = "",
     start: str = "",
     end: str = "",
@@ -114,8 +119,12 @@ async def list_transactions(
         query["created_at"] = {"$gte": now - timedelta(days=7)}
     elif period == "30d":
         query["created_at"] = {"$gte": now - timedelta(days=30)}
-    if method in ("tunai", "qris"):
+    elif period == "all":
+        pass  # no date filter
+    if method in ("tunai", "qris", "piutang"):
         query["payment_method"] = method
+    if piutang_status in ("unpaid", "paid"):
+        query["piutang_status"] = piutang_status
     if q.strip():
         escaped = re.escape(q.strip())
         query["$or"] = [
@@ -126,6 +135,7 @@ async def list_transactions(
         ]
     docs = await repo.find("transactions", query).sort("created_at", -1).to_list(200)
     return [_trx_out(doc, principal) for doc in docs]
+
 
 
 @router.get("/report", response_model=TransactionRangeReport)
@@ -140,13 +150,14 @@ async def transactions_range_report(
     query: dict = {}
     if start or end:
         query["created_at"] = _range_filter(start, end)
-    if method in ("tunai", "qris"):
+    if method in ("tunai", "qris", "piutang"):
         query["payment_method"] = method
 
     docs = await repo.find("transactions", query).to_list(20000)
     report = TransactionRangeReport(
         start=start, end=end, transaction_count=0, void_count=0, total_revenue=0,
-        total_cogs=0, total_profit=0, total_discount=0, items_sold=0, cash_total=0, qris_total=0,
+        total_cogs=0, total_profit=0, total_discount=0, items_sold=0, cash_total=0, qris_total=0, piutang_total=0,
+        piutang_paid=0, piutang_unpaid=0,
     )
     for doc in docs:
         if (doc.get("status") or "selesai") == "void":
@@ -160,8 +171,13 @@ async def transactions_range_report(
             report.items_sold += item["qty"]
         if doc["payment_method"] == "tunai":
             report.cash_total += doc["total"]
-        else:
+        elif doc["payment_method"] == "qris":
             report.qris_total += doc["total"]
+        else:
+            report.piutang_total += doc["total"]
+            paid = min(doc["total"], max(0, int(doc.get("amount_paid") or 0)))
+            report.piutang_paid += paid
+            report.piutang_unpaid += doc["total"] - paid
     report.total_profit = report.total_revenue - report.total_cogs
     return report
 
@@ -178,13 +194,13 @@ async def export_range_xlsx(
     query: dict = {}
     if start or end:
         query["created_at"] = _range_filter(start, end)
-    if method in ("tunai", "qris"):
+    if method in ("tunai", "qris", "piutang"):
         query["payment_method"] = method
 
     docs = await repo.find("transactions", query).sort("created_at", -1).to_list(20000)
 
     rows = []
-    revenue = cogs = discount = items_sold = cash = qris = voided = 0
+    revenue = cogs = discount = items_sold = cash = qris = piutang = piutang_paid = piutang_unpaid = voided = 0
     for doc in docs:
         is_void = (doc.get("status") or "selesai") == "void"
         doc_cogs = sum(int(i.get("cost") or 0) * i["qty"] for i in doc["items"])
@@ -197,7 +213,7 @@ async def export_range_xlsx(
                 "Status": "Dibatalkan" if is_void else "Selesai",
                 "Kasir": doc.get("cashier_name", ""),
                 "Pembeli": doc.get("customer_name") or "-",
-                "Pembayaran": "Tunai" if doc["payment_method"] == "tunai" else "QRIS",
+                "Pembayaran": {"tunai": "Tunai", "qris": "QRIS", "piutang": "Piutang"}.get(doc["payment_method"], doc["payment_method"]),
                 "Subtotal": doc.get("gross_total", doc["total"]),
                 "Diskon": doc.get("discount_total", 0),
                 "Total": doc["total"],
@@ -220,8 +236,13 @@ async def export_range_xlsx(
         items_sold += sum(i["qty"] for i in doc["items"])
         if doc["payment_method"] == "tunai":
             cash += doc["total"]
-        else:
+        elif doc["payment_method"] == "qris":
             qris += doc["total"]
+        else:
+            piutang += doc["total"]
+            paid = min(doc["total"], max(0, int(doc.get("amount_paid") or 0)))
+            piutang_paid += paid
+            piutang_unpaid += doc["total"] - paid
 
     summary = pd.DataFrame(
         [
@@ -235,6 +256,9 @@ async def export_range_xlsx(
             {"Keterangan": "Total diskon", "Nilai": discount},
             {"Keterangan": "Tunai", "Nilai": cash},
             {"Keterangan": "QRIS", "Nilai": qris},
+            {"Keterangan": "Piutang", "Nilai": piutang},
+            {"Keterangan": "Piutang Lunas", "Nilai": piutang_paid},
+            {"Keterangan": "Sisa Piutang", "Nilai": piutang_unpaid},
         ]
     )
     detail = pd.DataFrame(rows)
@@ -258,6 +282,7 @@ async def export_range_xlsx(
 
 
 @router.post("", response_model=Transaction, status_code=201)
+@db.transactional
 async def create_transaction(
     input: CheckoutIn,
     principal: Principal = Depends(require("transaction:create")),
@@ -296,14 +321,30 @@ async def create_transaction(
         product = products_by_id[item.product_id]
         if not product:
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
-        if product["type"] == "handphone":
+        serialized = product["type"] in {"handphone", "voucher"} or product.get("track_imei", False)
+        if product["type"] == "non_fisik":
+            target = (item.service_target or "").strip()
+            service_category = product.get("service_category")
+            if not target:
+                raise HTTPException(status_code=400, detail=f"Nomor tujuan wajib diisi untuk {product['name']}")
+            if service_category in {"pulsa", "pln"} and not target.isdigit():
+                raise HTTPException(status_code=400, detail="Nomor tujuan harus berupa angka")
+            if service_category == "pulsa" and not 9 <= len(target) <= 16:
+                raise HTTPException(status_code=400, detail="Nomor HP harus 9–16 digit")
+            if service_category == "pln" and not 11 <= len(target) <= 13:
+                raise HTTPException(status_code=400, detail="Nomor meter / ID pelanggan PLN harus 11–13 digit")
+            if service_category == "ewallet" and (item.service_amount or 0) < 1000:
+                raise HTTPException(status_code=400, detail="Nominal E-Wallet minimal Rp1.000")
+        elif serialized:
             if not item.unit_id:
-                raise HTTPException(status_code=400, detail=f"Unit IMEI wajib dipilih untuk {product['name']}")
+                label = "unit barcode" if product["type"] == "voucher" else "unit IMEI"
+                raise HTTPException(status_code=400, detail=f"{label} wajib dipilih untuk {product['name']}")
             unit = units_by_id.get(item.unit_id)
             if not unit:
-                raise HTTPException(status_code=404, detail=f"IMEI tidak ditemukan untuk {product['name']}")
+                raise HTTPException(status_code=404, detail=f"Unit tidak ditemukan untuk {product['name']}")
             if unit["status"] != "in_stock":
-                raise HTTPException(status_code=409, detail=f"IMEI {unit['imei']} sudah terjual")
+                code = unit.get("barcode") or unit.get("imei")
+                raise HTTPException(status_code=409, detail=f"Barcode/IMEI {code} sudah terjual")
         else:
             if item.qty < 1:
                 raise HTTPException(status_code=400, detail="Jumlah minimal 1")
@@ -315,16 +356,26 @@ async def create_transaction(
     planned: list[tuple[dict, Optional[dict], TransactionItemOut]] = []
     for item in input.items:
         product = products_by_id[item.product_id]
-        if product["type"] == "handphone":
+        serialized = product["type"] in {"handphone", "voucher"} or product.get("track_imei", False)
+        service_amount = None
+        if serialized:
             unit = units_by_id[item.unit_id]
-            # a unit may carry its own IMEI-specific price; fall back to the product price
-            price = int(unit.get("sell_price") or 0) or product["sell_price"]
+            # Serialized phones and data-voucher codes may carry their own cost and sell price.
+            tier = item.price_tier if product["type"] == "voucher" else "ritel"
+            price = int(unit.get("sell_price") or 0) or _tier_price(product, tier)
             cost = int(unit.get("cost_price") or 0) or product.get("cost_price", 0)
-            qty, tier = 1, "ritel"
+            qty = 1
+        elif product["type"] == "non_fisik":
+            unit = None
+            tier = "ritel"
+            service_amount = item.service_amount if product.get("service_category") == "ewallet" else product.get("denomination")
+            price = item.service_amount if product.get("service_category") == "ewallet" else product["sell_price"]
+            cost = product.get("cost_price", 0)
+            qty = 1
         else:
             unit = None
-            tier = item.price_tier if product["type"] == "voucher" else "ritel"
-            price = _tier_price(product, tier)
+            tier = "ritel"
+            price = product["sell_price"]
             cost = product.get("cost_price", 0)
             qty = item.qty
 
@@ -339,8 +390,14 @@ async def create_transaction(
                     product_name=product["name"],
                     unit_id=unit["id"] if unit else None,
                     imei=unit["imei"] if unit else None,
+                    barcode=unit.get("barcode") if unit else None,
                     color=unit.get("color", "") if unit else None,
                     capacity=unit.get("capacity", "") if unit else None,
+                    service_category=product.get("service_category"),
+                    provider=product.get("provider") if product["type"] == "non_fisik" else None,
+                    service_target=item.service_target.strip() if item.service_target else None,
+                    service_amount=service_amount,
+                    pln_token=None,
                     qty=qty,
                     price=price,
                     price_tier=tier,
@@ -363,8 +420,16 @@ async def create_transaction(
         paid = input.amount_paid or 0
         if paid < total:
             raise HTTPException(status_code=400, detail="Jumlah uang tunai kurang dari total")
+        change = paid - total
+    elif input.payment_method == "piutang":
+        # Credit sale: may be fully unpaid (amount_paid=0) or partially settled.
+        paid = input.amount_paid or 0
+        if paid > total:
+            raise HTTPException(status_code=400, detail="Uang muka melebihi total transaksi")
+        change = max(0, paid - total)
     else:
         paid = total
+        change = 0
 
     # Pass 3 — atomic claims; roll back everything if any claim fails mid-flight.
     claimed_units: list[str] = []
@@ -378,9 +443,12 @@ async def create_transaction(
                     {"$set": {"status": "sold", "sold_at": now, "transaction_id": trx_id}},
                 )
                 if claimed.matched_count == 0:
-                    raise HTTPException(status_code=409, detail=f"IMEI {unit['imei']} sudah terjual")
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Barcode/IMEI {unit.get('barcode') or unit['imei']} sudah terjual",
+                    )
                 claimed_units.append(unit["id"])
-            else:
+            elif product["type"] != "non_fisik":
                 updated = await repo.update_one(
                     "products",
                     {"id": product["id"], "stock_qty": {"$gte": line.qty}},
@@ -411,18 +479,22 @@ async def create_transaction(
         profit=profit,
         payment_method=input.payment_method,
         amount_paid=paid,
-        change_amount=paid - total,
+        change_amount=change,
         customer_name=input.customer_name.strip(),
         customer_phone=input.customer_phone.strip(),
         cashier_name=principal.name,  # server-derived, never client-supplied
         client_ref=input.client_ref,
         created_at=input.offline_created_at or now,
+        due_date=input.due_date if input.payment_method == "piutang" else None,
+        piutang_status=("paid" if paid >= total else "unpaid") if input.payment_method == "piutang" else None,
+        piutang_paid_at=(now if input.payment_method == "piutang" and paid >= total else None),
     )
     await repo.insert_one("transactions", trx.model_dump(exclude={"store_id"}))
     return _trx_out(trx.model_dump(), principal)
 
 
 @router.post("/{transaction_id}/void", response_model=Transaction)
+@db.transactional
 async def void_transaction(
     transaction_id: str,
     input: VoidIn,
@@ -466,7 +538,7 @@ async def void_transaction(
                 {"id": item["unit_id"]},
                 {"$set": {"status": "in_stock", "sold_at": None, "transaction_id": None}},
             )
-        else:
+        elif not item.get("service_category"):
             await repo.update_one("products", {"id": item["product_id"]}, {"$inc": {"stock_qty": item["qty"]}})
 
     label = "Retur" if input.void_type == "retur" else "Void"
@@ -481,3 +553,85 @@ async def void_transaction(
 
     updated = await repo.find_one("transactions", {"id": transaction_id})
     return _trx_out(updated or doc, principal)
+
+
+class PiutangSettleIn(BaseModel):
+    amount: int = Field(gt=0)
+
+
+class PlnTokenIn(BaseModel):
+    token: str = Field(pattern=r"^\d{20}$")
+
+
+@router.patch("/{transaction_id}/items/{item_index}/pln-token", response_model=Transaction)
+@db.transactional
+async def save_pln_token(
+    transaction_id: str,
+    item_index: int,
+    input: PlnTokenIn,
+    principal: Principal = Depends(require("transaction:create")),
+    repo: ScopedRepo = Depends(scoped_repo),
+):
+    doc = await repo.find_one("transactions", {"id": transaction_id})
+    if not doc or item_index < 0 or item_index >= len(doc.get("items", [])):
+        raise HTTPException(status_code=404, detail="Item transaksi tidak ditemukan")
+    items = list(doc["items"])
+    if items[item_index].get("service_category") != "pln":
+        raise HTTPException(status_code=400, detail="Item ini bukan transaksi listrik PLN")
+    items[item_index] = {**items[item_index], "pln_token": input.token}
+    await repo.update_one("transactions", {"id": transaction_id}, {"$set": {"items": items}})
+    updated = await repo.find_one("transactions", {"id": transaction_id})
+    return _trx_out(updated or doc, principal)
+
+
+@router.post("/{transaction_id}/settle", response_model=Transaction)
+@db.transactional
+async def settle_piutang(
+    transaction_id: str,
+    input: PiutangSettleIn,
+    principal: Principal = Depends(require("transaction:create")),
+    repo: ScopedRepo = Depends(scoped_repo),
+):
+    """Mark a piutang transaction as paid (fully or partially settled)."""
+    await repo.lock_one("transactions", {"id": transaction_id})
+    doc = await repo.find_one("transactions", {"id": transaction_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Transaksi tidak ditemukan")
+    if doc.get("payment_method") != "piutang":
+        raise HTTPException(status_code=400, detail="Bukan transaksi piutang")
+    if doc.get("piutang_status") == "paid":
+        raise HTTPException(status_code=400, detail="Piutang sudah lunas")
+    remaining = max(0, doc["total"] - int(doc.get("amount_paid") or 0))
+    if input.amount > remaining:
+        raise HTTPException(status_code=400, detail="Pembayaran melebihi sisa piutang")
+
+    # We update the amount_paid. If it reaches total, we mark as paid.
+    new_amount = int(doc.get("amount_paid") or 0) + input.amount
+    is_paid = new_amount >= doc["total"]
+    paid_at = datetime.now(timezone.utc) if is_paid else doc.get("piutang_paid_at")
+
+    update_result = await repo.update_one(
+        "transactions",
+        {"id": transaction_id, "piutang_status": {"$ne": "paid"}},
+        {
+            "$set": {
+                "amount_paid": new_amount,
+                "change_amount": max(0, new_amount - doc["total"]),
+                "piutang_status": "paid" if is_paid else "unpaid",
+                "piutang_paid_at": paid_at,
+            }
+        },
+    )
+    if update_result.matched_count == 0:
+        raise HTTPException(status_code=409, detail="Piutang sudah berubah. Muat ulang transaksi.")
+
+    await log_activity(
+        principal,
+        "transaction:settle",
+        summary=f"Pembayaran piutang {doc['transaction_number']} sejumlah {input.amount:,}".replace(",", "."),
+        entity_name=doc["transaction_number"],
+        category="toko",
+    )
+
+    updated = await repo.find_one("transactions", {"id": transaction_id})
+    return _trx_out(updated, principal)

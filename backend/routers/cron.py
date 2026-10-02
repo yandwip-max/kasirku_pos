@@ -7,7 +7,7 @@ tenant's. The cron endpoint only authenticates and hands the work off.
 import hmac
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from html import escape
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -28,6 +28,129 @@ def _rupiah(value: int) -> str:
 
 def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def _authorized_cron(authorization: Optional[str]) -> bool:
+    token = authorization.removeprefix("Bearer ").strip() if authorization and authorization.startswith("Bearer ") else ""
+    secrets = (os.environ.get("CRON_SECRET", ""), os.environ.get("WEBHOOK_CRON_SECRET", ""))
+    return bool(token) and any(secret and hmac.compare_digest(token, secret) for secret in secrets)
+
+
+async def _store_day_recap(store_id: str, work_date: str, zone: ZoneInfo) -> dict:
+    day = date.fromisoformat(work_date)
+    start = datetime.combine(day, time.min, tzinfo=zone).astimezone(timezone.utc)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=zone).astimezone(timezone.utc)
+    docs = await db.transactions.find({
+        "store_id": store_id,
+        "created_at": {"$gte": start, "$lt": end},
+        "status": {"$ne": "void"},
+    }).to_list(20000)
+    revenue = cogs = items = units = 0
+    products: dict[str, int] = {}
+    for doc in docs:
+        revenue += int(doc.get("total", 0))
+        for item in doc.get("items", []):
+            quantity = int(item.get("qty", 0))
+            cogs += int(item.get("cost") or 0) * quantity
+            items += quantity
+            if item.get("unit_id"):
+                units += quantity
+            name = item.get("product_name", "Produk")
+            products[name] = products.get(name, 0) + quantity
+    voided = await db.transactions.count_documents({
+        "store_id": store_id,
+        "voided_at": {"$gte": start, "$lt": end},
+        "status": "void",
+    })
+    return {
+        "revenue": revenue,
+        "cogs": cogs,
+        "profit": revenue - cogs,
+        "transactions": len(docs),
+        "items": items,
+        "units": units,
+        "voided": voided,
+        "top": sorted(products.items(), key=lambda item: item[1], reverse=True)[:5],
+    }
+
+
+def _daily_email_html(store_name: str, owner_name: str, recap: dict, work_date: str, closing_time: str) -> str:
+    top_rows = "".join(
+        f"<tr><td>{escape(name)}</td><td style='text-align:right'>{quantity}</td></tr>"
+        for name, quantity in recap["top"]
+    ) or "<tr><td colspan='2'>Belum ada penjualan hari ini</td></tr>"
+    return (
+        "<main style='font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#172033'>"
+        f"<p style='color:#0284c7;font-weight:bold'>LAPORAN HARIAN · TUTUP TOKO {escape(closing_time)}</p>"
+        f"<h1>{escape(store_name)}</h1><p>{escape(work_date)} · Halo {escape(owner_name)}, berikut ringkasan hari ini.</p>"
+        "<table style='width:100%;border-collapse:collapse' cellpadding='8'>"
+        f"<tr><td>Omzet</td><td style='text-align:right'><b>{_rupiah(recap['revenue'])}</b></td></tr>"
+        f"<tr><td>Modal / HPP</td><td style='text-align:right'>{_rupiah(recap['cogs'])}</td></tr>"
+        f"<tr><td>Laba</td><td style='text-align:right'><b>{_rupiah(recap['profit'])}</b></td></tr>"
+        f"<tr><td>Transaksi selesai</td><td style='text-align:right'>{recap['transactions']}</td></tr>"
+        f"<tr><td>Item terjual</td><td style='text-align:right'>{recap['items']} ({recap['units']} unit barcode/IMEI)</td></tr>"
+        f"<tr><td>Void/retur</td><td style='text-align:right'>{recap['voided']}</td></tr>"
+        "</table><h2>Produk terlaris</h2>"
+        f"<table style='width:100%' cellpadding='6'>{top_rows}</table>"
+        f"<p style='color:#64748b;font-size:12px'>Email otomatis KasirKu untuk {escape(work_date)}.</p></main>"
+    )
+
+
+async def run_daily_store_reports() -> None:
+    stores = await db.stores.find({"daily_report_enabled": {"$ne": False}}).to_list(10000)
+    for store in stores:
+        try:
+            zone = ZoneInfo(store.get("timezone", "Asia/Jakarta"))
+        except Exception:
+            logger.exception("invalid timezone for store %s", store.get("id"))
+            continue
+        now_local = datetime.now(zone)
+        closing_time = store.get("closing_time", "21:00")
+        if now_local.strftime("%H:%M") < closing_time:
+            continue
+        work_date = now_local.date().isoformat()
+        owners = await db.users.find({
+            "store_id": store["id"], "role": "pemilik", "is_active": {"$ne": False}
+        }).to_list(200)
+        recap = await _store_day_recap(store["id"], work_date, zone)
+        for owner in owners:
+            if not owner.get("email"):
+                continue
+            query = {"store_id": store["id"], "user_id": owner["id"], "work_date": work_date}
+            marker = await db.daily_report_runs.find_one(query)
+            if marker and marker.get("status") == "sent":
+                continue
+            now = datetime.now(timezone.utc)
+            if marker and marker.get("status") in {"sending", "failed"}:
+                retry_at = marker.get("started_at") if marker.get("status") == "sending" else marker.get("finished_at")
+                retry_at = _aware(retry_at or now)
+                if now - retry_at < timedelta(minutes=20):
+                    continue
+            try:
+                await db.daily_report_runs.update_one(
+                    query,
+                    {"$set": {"status": "sending", "started_at": now, "email": owner["email"]}},
+                    upsert=True,
+                )
+            except Exception:
+                logger.exception("could not claim daily report for store/user %s/%s", store["id"], owner["id"])
+                continue
+            email_id = await send_email(
+                to=owner["email"],
+                subject=f"Laporan transaksi harian {store.get('name', 'toko Anda')} — {work_date}",
+                html=_daily_email_html(
+                    store.get("name", "Toko"), owner.get("name", "Pemilik"), recap, work_date, closing_time
+                ),
+            )
+            await db.daily_report_runs.update_one(
+                query,
+                {"$set": {
+                    "status": "sent" if email_id else "failed",
+                    "email_id": email_id,
+                    "finished_at": datetime.now(timezone.utc),
+                }},
+            )
+    logger.info("daily store closing reports dispatcher finished")
 
 
 async def _store_recap(store_id: str, days: int = 7) -> dict:
@@ -114,7 +237,7 @@ def _recap_html(store_name: str, owner_name: str, recap: dict, period: str) -> s
         "</td></tr>"
         '<tr><td style="padding:16px 24px 24px">'
         f'<p style="margin:0;font-size:12px;color:#94a3b8">Email otomatis dari '
-        f"{escape(EMAIL_FROM_NAME)} — dikirim setiap Minggu malam. Kami tidak pernah meminta "
+        f"{escape(EMAIL_FROM_NAME)} — dikirim setiap Sabtu malam. Kami tidak pernah meminta "
         "password atau data kartu Anda melalui email.</p>"
         "</td></tr></table></td></tr></table>"
     )
@@ -149,6 +272,7 @@ async def run_weekly_reports(run_id: str) -> None:
 
 
 @router.post("/weekly-report")
+@router.get("/weekly-report")
 async def weekly_report(
     request: Request,
     background: BackgroundTasks,
@@ -156,9 +280,7 @@ async def weekly_report(
     x_webhook_id: Optional[str] = Header(default=None),
 ):
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
-    secret = os.environ.get("WEBHOOK_CRON_SECRET", "")
-    token = authorization.removeprefix("Bearer ").strip() if authorization and authorization.startswith("Bearer ") else ""
-    if not secret or not token or not hmac.compare_digest(token, secret):
+    if not _authorized_cron(authorization):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     envelope = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
@@ -173,3 +295,16 @@ async def weekly_report(
     await db.cron_runs.insert_one({"run_id": run_id, "job": "weekly-report", "started_at": datetime.now(timezone.utc)})
     background.add_task(run_weekly_reports, run_id)
     return {"status": "accepted", "run_id": run_id}
+
+
+@router.post("/daily-store-closing")
+@router.get("/daily-store-closing")
+async def daily_store_closing(
+    background: BackgroundTasks,
+    authorization: Optional[str] = Header(default=None),
+):
+    """Every-minute dispatcher; each enabled store sends once when its local close time passes."""
+    if not _authorized_cron(authorization):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    background.add_task(run_daily_store_reports)
+    return {"status": "accepted"}

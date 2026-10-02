@@ -72,7 +72,7 @@ export default function InstallAppButton() {
       <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
         <DialogContent className="sm:max-w-md" data-testid="install-help-dialog">
           <DialogHeader>
-            <DialogTitle>Pasang KasirKu di Layar Utama</DialogTitle>
+            <DialogTitle>Pasang KasirKu - Family App di Layar Utama</DialogTitle>
             <DialogDescription>
               Setelah dipasang, aplikasi terbuka layar penuh seperti aplikasi biasa dan tetap jalan saat internet mati.
             </DialogDescription>
@@ -89,7 +89,7 @@ export default function InstallAppButton() {
                   Pilih <strong>Tambahkan ke Layar Utama</strong> (Add to Home Screen).
                 </li>
                 <li>
-                  Ketuk <strong>Tambah</strong> — ikon KasirKu muncul di layar utama.
+                  Ketuk <strong>Tambah</strong> — ikon Family App muncul di layar utama.
                 </li>
               </ol>
             ) : (

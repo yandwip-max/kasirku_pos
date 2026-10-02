@@ -1,6 +1,6 @@
 # farm-ts
 
-Minimal split backend/frontend starter: **FastAPI + MongoDB** behind a
+Minimal split backend/frontend starter: **FastAPI + PostgreSQL** behind a
 **Vite + React 19 + TypeScript** frontend, joined by a small typed fetch layer
 over `/api`. This is a bare skeleton — no app features are implemented. Build on
 top of it.
@@ -9,7 +9,7 @@ top of it.
 
 ```
 farm-ts/
-  backend/   FastAPI + motor (async MongoDB) + Pydantic v2 — python, /root/.venv
+  backend/   FastAPI + asyncpg (PostgreSQL/Supabase) + Pydantic v2
   frontend/  Vite + React 19 + Tailwind v4 + shadcn/ui (TypeScript strict)
   tests/     Playwright e2e workspace (pre-scaffolded)
 ```
@@ -50,7 +50,7 @@ FastAPI, async throughout. `python` is the app venv interpreter
      (`StatusCheckCreate` / `StatusCheck`);
   2. an `async def` handler decorated with
      `@api_router.post("/status", response_model=StatusCheck)`;
-  3. `await` the motor call inside it.
+  3. `await` the database call inside it.
   FastAPI validates the request against the Pydantic model before your handler
   runs — a malformed body never reaches your code, it gets an automatic `422`
   with a `{"detail": [...]}` body.
@@ -59,21 +59,16 @@ FastAPI, async throughout. `python` is the app venv interpreter
   each exporting its own `APIRouter`, mounted from `server.py` via
   `api_router.include_router(...)` or `app.include_router(...)` with the `/api`
   prefix preserved).
-- **MongoDB**: import the shared handle — `from lib.db import client, db`
-  (`backend/lib/db.py` self-loads `.env` before reading env). Use it from
-  `server.py`, every router, and standalone scripts like `seed.py`; never
-  construct another `AsyncIOMotorClient`. Collections are attributes:
-  `await db.status_checks.insert_one(...)`, `await db.status_checks.find().to_list(1000)`.
-  Motor connects lazily, so importing `server` never blocks on Mongo. `pymongo`
-  is installed too if you need a sync client in a script.
-- **Ids**: documents use a string `id` (`uuid4`) field, not Mongo's `ObjectId`
-  — `ObjectId` is not JSON-serializable and leaks into response bodies. Keep the
-  `uuid4` default-factory pattern from `StatusCheck`.
-- **Config**: `backend/.env` — `MONGO_URL` (connection string), `DB_NAME`
-  (database name), `CORS_ORIGINS`. `server.py` loads it with `python-dotenv`
-  above its local imports, and `lib/db.py` self-loads it so standalone scripts
-  inherit it too. The pod runs `mongod` locally, so `MONGO_URL` points at
-  `localhost`. Add new secrets/config here; read them with `os.environ`.
+- **PostgreSQL/Supabase**: import the shared handle — `from lib.db import client, db`
+  (`backend/lib/db.py` self-loads `.env`). Existing route-facing CRUD calls keep
+  their dictionary/list result shape; `backend/lib/postgres.py` executes them on
+  PostgreSQL. The schema and foreign keys are in `backend/schema.sql`; the
+  one-time Mongo data-copy procedure is in `backend/MIGRATION.md`.
+- **Ids**: records use a string `id` (`uuid4`) field, not Mongo `ObjectId`;
+  keep the uuid default-factory pattern from the existing models.
+- **Config**: `backend/.env` — `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`,
+  and optional Google/OpenAI settings. `lib/db.py` self-loads this file so
+  standalone scripts inherit it too. Do not commit the real `.env`.
 - **Dates**: `backend/lib/dates.py` — `today_iso(tz=None)`. The pod clock is
   UTC; anchor "today" server-side with this, never with client-side date math.
 - **Interactive check**: `cd /app/backend && python -c 'import server'` catches
@@ -173,7 +168,7 @@ not apply to it.
 This template runs under supervisord in the Emergent agent pod — supersedes any
 local-run instructions above.
 
-- Backend, frontend, and `mongod` are each a supervisor program. After code or
+- Backend and frontend are supervisor programs. After code or
   config changes, restart and wait for readiness:
 
   ```bash
@@ -187,9 +182,70 @@ local-run instructions above.
   `frontend.err.log`.
 - App in a browser: the pod's preview URL (frontend, port `3000`). Backend API
   directly at port `8001`.
-- `mongod` runs locally in the pod (`--bind_ip_all`); `MONGO_URL` in
-  `backend/.env` points at `localhost`, no separate Mongo container.
+- PostgreSQL must be reachable using `DATABASE_URL` in
+  `backend/.env`.
 - Both dev servers hot-reload on file edits (uvicorn `--reload` for the backend,
   Vite HMR for the frontend); no rebuild step needed for normal iteration. A
   restart is still needed after changing `.env`, `requirements.txt`, or
   `vite.config.ts`.
+
+## Local setup (Windows)
+
+Install PostgreSQL 17 for Windows and Python 3.11+ from python.org (enable the
+Python launcher during setup), then open a new PowerShell window. Check that
+`py --version` reports the installed Python, then prepare the environment:
+
+```powershell
+Copy-Item backend/.env.example backend/.env
+npm install --prefix frontend
+py -3 -m venv backend\.venv
+.\backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+```
+
+Edit `backend/.env` and set `DATABASE_URL` to the password chosen by the
+PostgreSQL installer, for example
+`postgresql://postgres:YOUR_PASSWORD@127.0.0.1:5432/postgres`. PostgreSQL runs
+as a Windows service; no Docker or Supabase CLI is used. The backend applies
+`backend/schema.sql` automatically at startup. A hosted Supabase PostgreSQL URL
+is also supported. Set separate random values for `JWT_SECRET` and
+`WEBHOOK_CRON_SECRET`; the cron runner must send the latter as its bearer token.
+The daily dispatcher is called every minute and sends each enabled store's
+transaction summary after its local closing time.
+Set `EMERGENT_EMAIL_KEY` from the configured email provider to enable delivery;
+reports go to the active Pemilik accounts' stored email addresses. Failed sends
+are retried no more often than every 20 minutes.
+Start the backend once so it creates the schema. To create demo data, open a
+second PowerShell terminal and change to `backend`,
+then run `.\.venv\Scripts\python.exe seed.py`. Demo login:
+`pemilik@demo.id` / `demo1234`.
+
+To enable Google sign-in, create a Google OAuth 2.0 Web client, add the actual
+frontend origin (normally `http://localhost:3000`) as an authorized JavaScript
+origin, and set `GOOGLE_CLIENT_ID`. A user must first register a KasirKu
+account with that verified Google email; OAuth signs in to that existing
+account and never creates a store implicitly.
+
+To enable product-image analysis, set `OPENAI_API_KEY` and optionally
+`OPENAI_VISION_MODEL` in the backend environment. The key stays server-side.
+Authenticated clients can send `POST /api/ai/vision/analyze` as multipart form
+data with an `image` field (JPEG, PNG, or WebP; maximum 10 MB) and an optional
+`question` field. The endpoint returns the model's `text` and `model`.
+
+Staff can check in and out from the POS screen. Owners set store opening/closing
+times, timezone and the daily-email toggle in **Pengaturan**; the same page lists
+today's attendance records.
+
+Run the backend and frontend in separate PowerShell terminals:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m uvicorn server:app --reload --host 0.0.0.0 --port 8001
+```
+
+```powershell
+npm run dev
+```
+
+From the repository root, `npm run build` builds the frontend. The API requires
+native PostgreSQL running and reachable through `DATABASE_URL`; Supabase CLI and
+Docker are optional, not required for this local setup.

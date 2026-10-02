@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Ban, X, FileSpreadsheet } from "lucide-react";
+import { Search, Ban, X, FileSpreadsheet, Zap } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import type { Transaction, TransactionRangeReport } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
@@ -10,6 +10,7 @@ import { downloadFile } from "@/lib/download";
 import { toast } from "sonner";
 import AppShell from "@/components/AppShell";
 import ReceiptDialog from "@/components/pos/ReceiptDialog";
+import PlnTokenDialog from "@/components/pos/PlnTokenDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +29,7 @@ const METHODS = [
   { id: "", label: "Semua Metode" },
   { id: "tunai", label: "Tunai" },
   { id: "qris", label: "QRIS" },
+  { id: "piutang", label: "Piutang" },
 ] as const;
 
 function itemsSummary(t: Transaction): string {  const first = t.items[0];
@@ -66,6 +68,7 @@ export default function TransactionsPage() {  const [period, setPeriod] = useSta
   // an explicit date range overrides the quick period chips
   const useRange = startDate !== "" || endDate !== "";
   const [detail, setDetail] = useState<Transaction | null>(null);
+  const [plnTokenTarget, setPlnTokenTarget] = useState<{ transaction: Transaction; itemIndex: number } | null>(null);
   const [voidTarget, setVoidTarget] = useState<Transaction | null>(null);
   const { permissions, isOwner } = useAuth();
   // isOwner covers the boot window before /auth/me hands back the permission list
@@ -251,13 +254,16 @@ export default function TransactionsPage() {  const [period, setPeriod] = useSta
                   {downloading ? "Menyiapkan…" : "Unduh Excel"}
                 </Button>
               </div>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
                 <RangeStat label="Omzet" value={formatRupiah(report.total_revenue)} testid="range-revenue" />
                 <RangeStat label="Modal / HPP" value={formatRupiah(report.total_cogs)} tone="text-amber-600" testid="range-cogs" />
                 <RangeStat label="Keuntungan" value={formatRupiah(report.total_profit)} tone="text-emerald-700" testid="range-profit" />
                 <RangeStat label="Total Diskon" value={formatRupiah(report.total_discount)} testid="range-discount" />
-                <RangeStat label="Tunai" value={formatRupiah(report.cash_total)} testid="range-cash" />
-                <RangeStat label="QRIS" value={formatRupiah(report.qris_total)} testid="range-qris" />
+<RangeStat label="Tunai" value={formatRupiah(report.cash_total)} testid="range-cash" />
+                 <RangeStat label="QRIS" value={formatRupiah(report.qris_total)} testid="range-qris" />
+                 <RangeStat label="Piutang" value={formatRupiah(report.piutang_total)} tone="text-amber-700" testid="range-piutang" />
+                <RangeStat label="Piutang Lunas" value={formatRupiah(report.piutang_paid)} tone="text-emerald-700" testid="range-piutang-paid" />
+                <RangeStat label="Sisa Piutang" value={formatRupiah(report.piutang_unpaid)} tone="text-amber-700" testid="range-piutang-unpaid" />
               </div>
             </CardContent>
           </Card>
@@ -286,7 +292,9 @@ export default function TransactionsPage() {  const [period, setPeriod] = useSta
                       </TableCell>
                     </TableRow>
                   ))}
-                {rows.map((t) => (
+                {rows.map((t) => {
+                  const pendingPlnItem = t.items.findIndex((item) => item.service_category === "pln" && !item.pln_token);
+                  return (
                   <TableRow key={t.id} className={cn(t.status === "void" && "bg-rose-50/50")} data-testid="transaction-row">
                     <TableCell className="font-mono text-xs font-semibold">
                       {t.transaction_number}
@@ -303,16 +311,30 @@ export default function TransactionsPage() {  const [period, setPeriod] = useSta
                     <TableCell className="text-sm text-slate-600">{formatDateTime(t.created_at)}</TableCell>
                     <TableCell className="max-w-56 truncate text-sm">{itemsSummary(t)}</TableCell>
                     <TableCell>
+                      <div className="grid justify-items-start gap-1">
                       <Badge
                         variant="outline"
                         className={cn(
                           t.payment_method === "tunai"
                             ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : "border-sky-200 bg-sky-50 text-sky-700",
+                            : t.payment_method === "qris"
+                            ? "border-sky-200 bg-sky-50 text-sky-700"
+                            : "border-amber-200 bg-amber-50 text-amber-700",
                         )}
                       >
-                        {t.payment_method === "tunai" ? "Tunai" : "QRIS"}
+                        {t.payment_method === "tunai" ? "Tunai" : t.payment_method === "qris" ? "QRIS" : "Piutang"}
                       </Badge>
+                      {t.payment_method === "piutang" ? (
+                        <Badge variant="outline" className={t.piutang_status === "paid" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"} data-testid="transaction-debt-status">
+                          {t.piutang_status === "paid" ? "Lunas" : "Belum Lunas"}
+                        </Badge>
+                      ) : null}
+                      {t.payment_method === "piutang" && t.piutang_paid_at ? (
+                        <span className="text-[11px] text-slate-500" data-testid="transaction-debt-paid-at">
+                          Lunas {formatDateTime(t.piutang_paid_at)}
+                        </span>
+                      ) : null}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">{t.customer_name || "-"}</TableCell>
                     <TableCell className="text-right font-mono text-sm font-bold">
@@ -332,6 +354,17 @@ export default function TransactionsPage() {  const [period, setPeriod] = useSta
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1.5">
+                        {pendingPlnItem >= 0 && t.status !== "void" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            aria-label="Catat token PLN"
+                            data-testid="transaction-save-pln-token-btn"
+                            onClick={() => setPlnTokenTarget({ transaction: t, itemIndex: pendingPlnItem })}
+                          >
+                            <Zap className="h-3.5 w-3.5" /> Token PLN
+                          </Button>
+                        ) : null}
                         <Button variant="outline" size="sm" data-testid="transaction-detail-btn" onClick={() => setDetail(t)}>
                           Detail
                         </Button>
@@ -349,7 +382,8 @@ export default function TransactionsPage() {  const [period, setPeriod] = useSta
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
                 {!txQuery.isLoading && rows.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={7} className="py-10 text-center text-sm text-slate-400">
@@ -368,6 +402,13 @@ export default function TransactionsPage() {  const [period, setPeriod] = useSta
         open={detail !== null}
         onOpenChange={(open) => !open && setDetail(null)}
         printTestId="transaction-reprint-btn"
+      />
+
+      <PlnTokenDialog
+        transaction={plnTokenTarget?.transaction ?? null}
+        itemIndex={plnTokenTarget?.itemIndex ?? null}
+        onOpenChange={(open) => !open && setPlnTokenTarget(null)}
+        onSaved={() => setPlnTokenTarget(null)}
       />
 
       <VoidTransactionDialog transaction={voidTarget} onOpenChange={(open) => !open && setVoidTarget(null)} />

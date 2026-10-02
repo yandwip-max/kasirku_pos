@@ -14,6 +14,7 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (payload: LoginPayload) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
   /** Re-pull /auth/me — used after renaming your own account so the header updates. */
@@ -109,6 +110,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession],
   );
 
+  const loginWithGoogle = useCallback(
+    async (credential: string) => {
+      applySession(await apiPost<SessionOut>("/auth/google", { credential }));
+    },
+    [applySession],
+  );
+
   const register = useCallback(
     async (payload: RegisterPayload) => {
       applySession(await apiPost<SessionOut>("/auth/register", payload));
@@ -131,13 +139,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       login,
+      loginWithGoogle,
       register,
       logout: clearSession,
       refreshSession,
       can: (action: string) => state.permissions.includes(action),
       isOwner: state.user?.role === "pemilik",
     }),
-    [state, login, register, clearSession, refreshSession],
+    [state, login, loginWithGoogle, register, clearSession, refreshSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

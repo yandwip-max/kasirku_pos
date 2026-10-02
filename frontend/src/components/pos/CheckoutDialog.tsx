@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Banknote, CheckCircle2, QrCode } from "lucide-react";
-import type { CartLine } from "@/lib/types";
+import { Banknote, CheckCircle2, QrCode, Receipt } from "lucide-react";
+import type { CartLine, PaymentMethod } from "@/lib/types";
 import { cartTotal } from "@/lib/cart";
 import { formatRupiah, formatThousands, parseRupiah } from "@/lib/format";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -50,13 +50,15 @@ interface CheckoutDialogProps {
   cart: CartLine[];
   customer: { name: string; phone: string };
   submitting: boolean;
-  onConfirm: (method: "tunai" | "qris", amountPaid: number | null) => void;
+  onConfirm: (method: PaymentMethod, amountPaid: number | null, dueDate: string | null) => void;
 }
 
 export default function CheckoutDialog({ open, onOpenChange, cart, customer, submitting, onConfirm }: CheckoutDialogProps) {
-  const [tab, setTab] = useState<"tunai" | "qris">("tunai");
+  const [tab, setTab] = useState<PaymentMethod>("tunai");
   const [cash, setCash] = useState(0);
   const [qrisPaid, setQrisPaid] = useState(false);
+  const [advance, setAdvance] = useState(0);
+  const [dueDate, setDueDate] = useState<string>("");
 
   const total = useMemo(() => cartTotal(cart), [cart]);
 
@@ -65,11 +67,13 @@ export default function CheckoutDialog({ open, onOpenChange, cart, customer, sub
       setTab("tunai");
       setCash(0);
       setQrisPaid(false);
+      setAdvance(0);
+      setDueDate("");
     }
   }, [open]);
 
   const change = cash - total;
-  const canSubmit = total > 0 && (tab === "tunai" ? cash >= total : qrisPaid);
+  const canSubmit = total > 0 && (tab === "tunai" ? cash >= total : tab === "qris" ? qrisPaid : tab === "piutang" ? !!dueDate && advance <= total : true);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -82,13 +86,16 @@ export default function CheckoutDialog({ open, onOpenChange, cart, customer, sub
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={tab} onValueChange={(value) => setTab(value as "tunai" | "qris")}>
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs value={tab} onValueChange={(value) => setTab(value as PaymentMethod)}>
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="tunai" data-testid="checkout-payment-cash-tab">
               <Banknote className="h-4 w-4" /> Tunai
             </TabsTrigger>
             <TabsTrigger value="qris" data-testid="checkout-payment-qris-tab">
               <QrCode className="h-4 w-4" /> QRIS
+            </TabsTrigger>
+            <TabsTrigger value="piutang" data-testid="checkout-payment-piutang-tab">
+              <Receipt className="h-4 w-4" /> Piutang
             </TabsTrigger>
           </TabsList>
 
@@ -126,7 +133,7 @@ export default function CheckoutDialog({ open, onOpenChange, cart, customer, sub
                 className="mt-1 font-mono text-lg font-bold"
                 data-testid="checkout-cash-received-input"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && canSubmit && !submitting) onConfirm("tunai", cash);
+                  if (e.key === "Enter" && canSubmit && !submitting) onConfirm("tunai", cash, null);
                 }}
               />
             </div>
@@ -174,6 +181,48 @@ export default function CheckoutDialog({ open, onOpenChange, cart, customer, sub
               )}
             </div>
           </TabsContent>
+
+          <TabsContent value="piutang" className="mt-4">
+            <div className="rounded-lg border border-amber-100 bg-amber-50 p-4 text-center">
+              <Receipt className="mx-auto mb-2 h-8 w-8 text-amber-600" />
+              <p className="text-sm font-semibold text-amber-800">Jual ke Piutang</p>
+              <p className="mt-1 text-xs text-amber-700/80">
+                Barang dikirim sekarang, pembayaran dilunasi nanti. Uang muka opsional.
+              </p>
+            </div>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Tanggal Jatuh Tempo *</label>
+                <Input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="mt-1"
+                  data-testid="checkout-debt-due-date-input"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Uang Muka (opsional)</label>
+                <Input
+                  value={advance ? formatThousands(advance) : ""}
+                  onChange={(e) => setAdvance(Math.min(total, parseRupiah(e.target.value)))}
+                  inputMode="numeric"
+                  placeholder="0"
+                  className="mt-1 font-mono text-lg font-bold"
+                  data-testid="checkout-debt-advance-input"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && canSubmit && !submitting) onConfirm("piutang", advance || null, dueDate ? new Date(dueDate).toISOString() : null);
+                  }}
+                />
+              </div>
+              {advance > 0 && (
+                <p className="text-sm text-slate-600">
+                  Sisa piutang:{" "}
+                  <span className="font-mono font-bold text-amber-700">{formatRupiah(total - advance)}</span>
+                </p>
+              )}
+            </div>
+          </TabsContent>
         </Tabs>
 
         <Button
@@ -181,7 +230,13 @@ export default function CheckoutDialog({ open, onOpenChange, cart, customer, sub
           className="w-full active:scale-[0.98] transition-transform duration-100"
           disabled={!canSubmit || submitting}
           data-testid="checkout-submit-btn"
-          onClick={() => onConfirm(tab, tab === "tunai" ? cash : null)}
+          onClick={() =>
+            onConfirm(
+              tab,
+              tab === "tunai" ? cash : tab === "piutang" ? advance || null : null,
+              tab === "piutang" && dueDate ? new Date(dueDate).toISOString() : null
+            )
+          }
         >
           {submitting ? "Menyimpan…" : "Simpan & Cetak Struk"}
         </Button>

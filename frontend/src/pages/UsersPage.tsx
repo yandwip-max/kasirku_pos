@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { KeyRound, Pencil, ShieldCheck, UserPlus } from "lucide-react";
-import { ResetPasswordDialog, StoreProfileCard } from "@/components/StoreSettings";
+import { ResetPasswordDialog } from "@/components/StoreSettings";
 import { BackupCard } from "@/components/DataTools";
 import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
@@ -185,7 +185,6 @@ export default function UsersPage() {
           </Button>
         </div>
 
-        <StoreProfileCard />
         <BackupCard />
 
         <Card>

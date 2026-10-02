@@ -1,4 +1,4 @@
-"""Store-scoped Mongo access. Every tenant query goes through here so no route can
+"""Store-scoped database access. Every tenant query goes through here so no route can
 forget the `store_id` filter — that omission is the classic multi-tenant data leak.
 
 Routes never touch `db.<collection>` for tenant data directly; they take
@@ -34,6 +34,9 @@ class ScopedRepo:
 
     async def find_one(self, collection: str, query: Optional[Mapping[str, Any]] = None):
         return await db[collection].find_one(self._filter(query))
+
+    async def lock_one(self, collection: str, query: Mapping[str, Any]) -> bool:
+        return await db[collection].lock_one(self._filter(query))
 
     async def insert_one(self, collection: str, doc: Mapping[str, Any]):
         return await db[collection].insert_one(self._stamp(doc))
