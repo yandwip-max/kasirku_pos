@@ -5,9 +5,10 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
-import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, Field
 
 from lib.audit import log_activity
@@ -244,34 +245,46 @@ async def export_range_xlsx(
             piutang_paid += paid
             piutang_unpaid += doc["total"] - paid
 
-    summary = pd.DataFrame(
-        [
-            {"Keterangan": "Periode", "Nilai": f"{start or 'awal'} s/d {end or 'hari ini'}"},
-            {"Keterangan": "Jumlah transaksi", "Nilai": len(rows) - voided},
-            {"Keterangan": "Transaksi dibatalkan", "Nilai": voided},
-            {"Keterangan": "Item terjual", "Nilai": items_sold},
-            {"Keterangan": "Omzet", "Nilai": revenue},
-            {"Keterangan": "Modal / HPP", "Nilai": cogs},
-            {"Keterangan": "Keuntungan", "Nilai": revenue - cogs},
-            {"Keterangan": "Total diskon", "Nilai": discount},
-            {"Keterangan": "Tunai", "Nilai": cash},
-            {"Keterangan": "QRIS", "Nilai": qris},
-            {"Keterangan": "Piutang", "Nilai": piutang},
-            {"Keterangan": "Piutang Lunas", "Nilai": piutang_paid},
-            {"Keterangan": "Sisa Piutang", "Nilai": piutang_unpaid},
-        ]
-    )
-    detail = pd.DataFrame(rows)
+    summary = [
+        {"Keterangan": "Periode", "Nilai": f"{start or 'awal'} s/d {end or 'hari ini'}"},
+        {"Keterangan": "Jumlah transaksi", "Nilai": len(rows) - voided},
+        {"Keterangan": "Transaksi dibatalkan", "Nilai": voided},
+        {"Keterangan": "Item terjual", "Nilai": items_sold},
+        {"Keterangan": "Omzet", "Nilai": revenue},
+        {"Keterangan": "Modal / HPP", "Nilai": cogs},
+        {"Keterangan": "Keuntungan", "Nilai": revenue - cogs},
+        {"Keterangan": "Total diskon", "Nilai": discount},
+        {"Keterangan": "Tunai", "Nilai": cash},
+        {"Keterangan": "QRIS", "Nilai": qris},
+        {"Keterangan": "Piutang", "Nilai": piutang},
+        {"Keterangan": "Piutang Lunas", "Nilai": piutang_paid},
+        {"Keterangan": "Sisa Piutang", "Nilai": piutang_unpaid},
+    ]
 
     buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        summary.to_excel(writer, index=False, sheet_name="Ringkasan")
-        detail.to_excel(writer, index=False, sheet_name="Transaksi", freeze_panes=(1, 0))
-        for name, frame in (("Ringkasan", summary), ("Transaksi", detail)):
-            sheet = writer.sheets[name]
-            for index, header in enumerate(frame.columns, start=1):
-                widest = max([len(str(header))] + [len(str(v)[:40]) for v in frame[header].head(200)] or [0])
-                sheet.column_dimensions[sheet.cell(row=1, column=index).column_letter].width = min(widest + 3, 42)
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "Ringkasan"
+    summary_headers = ["Keterangan", "Nilai"]
+    summary_sheet.append(summary_headers)
+    for row in summary:
+        summary_sheet.append([row[header] for header in summary_headers])
+
+    detail_sheet = workbook.create_sheet("Transaksi")
+    detail_headers = list(rows[0]) if rows else [
+        "No. Struk", "Tanggal", "Status", "Kasir", "Pembeli", "Pembayaran", "Subtotal", "Diskon",
+        "Total", "Modal (HPP)", "Laba", "Rincian Barang", "Alasan Pembatalan",
+    ]
+    detail_sheet.append(detail_headers)
+    for row in rows:
+        detail_sheet.append([row.get(header, "") for header in detail_headers])
+    detail_sheet.freeze_panes = "A2"
+
+    for sheet in (summary_sheet, detail_sheet):
+        for index, header in enumerate(sheet[1], start=1):
+            widest = max(len(str(header.value)), *(len(str(cell.value)[:40]) for cell in list(sheet.columns)[index - 1][1:201]))
+            sheet.column_dimensions[get_column_letter(index)].width = min(widest + 3, 42)
+    workbook.save(buffer)
 
     label = f"{start or 'awal'}_{end or 'kini'}"
     return Response(

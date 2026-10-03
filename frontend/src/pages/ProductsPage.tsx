@@ -338,6 +338,26 @@ function ProductFormDialog({
                 </p>
               )}
             </div> : null}
+            {(form.type === "aksesoris" || form.type === "lainnya") && !form.track_imei && (
+              <div className="grid grid-cols-2 gap-3">
+                <NumberField
+                  id="product-stock"
+                  label="Jumlah Stok"
+                  value={form.stock_qty}
+                  onChange={(v) => set("stock_qty", v)}
+                  placeholder="0"
+                  testid="product-stock-input"
+                />
+                <NumberField
+                  id="product-min-stock"
+                  label="Batas Stok Menipis"
+                  value={form.min_stock}
+                  onChange={(v) => set("min_stock", v)}
+                  placeholder="5"
+                  testid="product-min-stock-input"
+                />
+              </div>
+            )}
           </div>
 
           {form.type === "non_fisik" && (
@@ -443,27 +463,6 @@ function ProductFormDialog({
               testid="product-wholesale-input"
               hint="Kasir memilih Ritel atau Grosir per item di keranjang saat transaksi."
             />
-          )}
-
-          {(form.type === "aksesoris" || form.type === "lainnya") && !form.track_imei && (
-            <div className="grid grid-cols-2 gap-3">
-              <NumberField
-                id="product-stock"
-                label="Jumlah Stok"
-                value={form.stock_qty}
-                onChange={(v) => set("stock_qty", v)}
-                placeholder="0"
-                testid="product-stock-input"
-              />
-              <NumberField
-                id="product-min-stock"
-                label="Batas Stok Menipis"
-                value={form.min_stock}
-                onChange={(v) => set("min_stock", v)}
-                placeholder="5"
-                testid="product-min-stock-input"
-              />
-            </div>
           )}
 
           {form.type === "voucher" && (

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Bluetooth, ExternalLink, Printer, Smartphone } from "lucide-react";
+import { Bluetooth, Download, MessageCircle, Share2 } from "lucide-react";
+import { toJpeg } from "html-to-image";
 import { toast } from "sonner";
 import type { Transaction } from "@/lib/types";
 import ReceiptView from "@/components/ReceiptView";
@@ -10,13 +11,9 @@ import { escposBytes, receiptText } from "@/lib/escpos";
 import {
   applyPaperSize,
   hasWebBluetooth,
-  isAndroid,
   loadPaperSize,
   PAPER_OPTIONS,
-  printReceipt,
   printViaBluetooth,
-  printViaRawBT,
-  RAWBT_PLAY_URL,
   type PaperSize,
 } from "@/lib/printer";
 import { cn } from "@/lib/utils";
@@ -29,23 +26,103 @@ interface ReceiptDialogProps {
   printTestId?: string;
 }
 
+async function createReceiptJpg(receipt: HTMLElement, transactionNumber: string): Promise<File> {
+  await document.fonts.ready;
+  const dataUrl = await toJpeg(receipt, {
+    backgroundColor: "#ffffff",
+    cacheBust: true,
+    pixelRatio: 2,
+    quality: 0.94,
+  });
+  const blob = await (await fetch(dataUrl)).blob();
+  const safeNumber = transactionNumber.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return new File([blob], `struk-${safeNumber}.jpg`, { type: "image/jpeg" });
+}
+
 export default function ReceiptDialog({ transaction, open, onOpenChange, printTestId = "receipt-print-btn" }: ReceiptDialogProps) {
   const { store } = useAuth();
   const [paper, setPaper] = useState<PaperSize>(() => loadPaperSize());
   const [sending, setSending] = useState(false);
+  const [receiptJpg, setReceiptJpg] = useState<File | null>(null);
+  const [creatingImage, setCreatingImage] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   // the chosen paper drives the on-screen preview, the @page box and the ESC/POS line width
   useEffect(() => {
     applyPaperSize(paper);
   }, [paper]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setReceiptJpg(null);
+    if (!open || !transaction) {
+      setCreatingImage(false);
+      return;
+    }
+
+    setCreatingImage(true);
+    const prepareReceipt = async () => {
+      try {
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        const receipt = document.getElementById("receipt-print-area");
+        if (!receipt) throw new Error("Struk belum siap dijadikan gambar.");
+        const file = await createReceiptJpg(receipt, transaction.transaction_number);
+        if (!cancelled) setReceiptJpg(file);
+      } catch (err) {
+        if (!cancelled) toast.error(err instanceof Error ? err.message : "Gagal membuat gambar struk.");
+      } finally {
+        if (!cancelled) setCreatingImage(false);
+      }
+    };
+
+    void prepareReceipt();
+    return () => { cancelled = true; };
+  }, [open, paper, transaction]);
+
   const hint = PAPER_OPTIONS.find((p) => p.id === paper)?.hint ?? "";
   const thermal = paper !== "a4";
 
-  function sendToRawBT() {
-    if (!transaction) return;
-    printViaRawBT(receiptText(transaction, store ?? null, paper));
-    toast.info("Struk dikirim ke aplikasi RawBT. Belum terpasang? Unduh dulu dari Play Store.");
+  function downloadImage(file: File) {
+    const url = URL.createObjectURL(file);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = file.name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function shareToWhatsApp() {
+    if (!transaction || !receiptJpg) return;
+    if (!navigator.share || !navigator.canShare?.({ files: [receiptJpg] })) {
+      downloadImage(receiptJpg);
+      toast.info("JPG struk diunduh. Lampirkan gambar ini di WhatsApp.");
+      return;
+    }
+
+    const shareRequest = navigator.share({
+      files: [receiptJpg],
+      title: `Struk ${transaction.transaction_number}`,
+    });
+    setSharing(true);
+    void shareRequest
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (err instanceof DOMException && err.name === "NotAllowedError") {
+          downloadImage(receiptJpg);
+          toast.info("JPG struk diunduh. Lampirkan gambar ini di WhatsApp.");
+          return;
+        }
+        toast.error("Gagal membagikan gambar struk.");
+      })
+      .finally(() => setSharing(false));
+  }
+
+  function downloadReceiptJpg() {
+    if (!receiptJpg) return;
+    downloadImage(receiptJpg);
+    toast.success("Struk JPG berhasil diunduh.");
   }
 
   async function sendToBluetooth() {
@@ -104,56 +181,53 @@ export default function ReceiptDialog({ transaction, open, onOpenChange, printTe
           </div>
         ) : null}
 
-        {thermal && (
-          <div className="space-y-2 rounded-lg border border-sky-100 bg-sky-50/60 p-2.5">
-            <p className="text-xs font-medium text-sky-900">Printer thermal portable / bluetooth</p>
-            <div className="flex flex-col gap-1.5">
+        <div className="space-y-2 rounded-lg border border-sky-100 bg-sky-50/60 p-2.5" data-testid={printTestId}>
+          <p className="flex items-center gap-1.5 text-xs font-medium text-sky-900">
+            <Share2 className="h-3.5 w-3.5" /> Bagikan Struk
+          </p>
+          <Button
+            variant="outline"
+            className="w-full justify-start bg-white transition-transform duration-100 active:scale-[0.98]"
+            data-testid="receipt-whatsapp-btn"
+            disabled={!transaction || !receiptJpg || creatingImage || sharing}
+            onClick={shareToWhatsApp}
+          >
+            <MessageCircle className="h-4 w-4 text-emerald-600" />
+            {creatingImage ? "Menyiapkan JPG…" : sharing ? "Membuka menu bagikan…" : "Bagikan ke WhatsApp"}
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-start bg-white transition-transform duration-100 active:scale-[0.98]"
+            data-testid="receipt-download-jpg-btn"
+            disabled={!receiptJpg || creatingImage || sharing}
+            onClick={downloadReceiptJpg}
+          >
+            <Download className="h-4 w-4 text-sky-600" />
+            {creatingImage ? "Menyiapkan JPG…" : "Download struk JPG"}
+          </Button>
+          {thermal && (
+            <>
               <Button
                 variant="outline"
-                className="justify-start bg-white transition-transform duration-100 active:scale-[0.98]"
-                data-testid="receipt-rawbt-btn"
-                onClick={sendToRawBT}
-              >
-                <Smartphone className="h-4 w-4 text-[#0284C7]" /> Cetak lewat RawBT (Android)
-              </Button>
-              <Button
-                variant="outline"
-                className="justify-start bg-white transition-transform duration-100 active:scale-[0.98]"
+                className="w-full justify-start bg-white transition-transform duration-100 active:scale-[0.98]"
                 data-testid="receipt-bluetooth-btn"
-                disabled={sending || !hasWebBluetooth()}
+                disabled={!transaction || sending || !hasWebBluetooth()}
                 onClick={sendToBluetooth}
               >
                 <Bluetooth className="h-4 w-4 text-[#0284C7]" />
                 {sending ? "Mengirim ke printer…" : "Cetak langsung via Bluetooth"}
               </Button>
-            </div>
-            <p className="text-[11px] leading-snug text-sky-900/70" data-testid="receipt-thermal-help">
-              {hasWebBluetooth()
-                ? "Bluetooth langsung butuh Chrome Android/desktop dan printer yang sudah menyala. Bila printer tidak terdeteksi, pakai RawBT."
-                : "Browser ini tidak mendukung Bluetooth langsung. Gunakan RawBT di Android, atau dialog cetak untuk printer USB/LAN."}{" "}
-              <a
-                href={RAWBT_PLAY_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 font-medium underline"
-                data-testid="receipt-rawbt-install-link"
-              >
-                Pasang RawBT <ExternalLink className="h-3 w-3" />
-              </a>
-              {isAndroid() ? "" : " (khusus Android)"}
-            </p>
-          </div>
-        )}
+              <p className="text-[11px] leading-snug text-sky-900/70" data-testid="receipt-bluetooth-help">
+                {hasWebBluetooth()
+                  ? "Bluetooth langsung membutuhkan Chrome Android/desktop dan printer yang sudah menyala."
+                  : "Browser ini tidak mendukung Bluetooth langsung. Gunakan Chrome Android atau desktop."}
+              </p>
+            </>
+          )}
+        </div>
 
-        <div className="flex gap-2">
-          <Button
-            className="flex-1 active:scale-[0.98] transition-transform duration-100"
-            data-testid={printTestId}
-            onClick={() => printReceipt(paper)}
-          >
-            <Printer className="h-4 w-4" /> Dialog Cetak
-          </Button>
-          <Button variant="outline" className="flex-1" data-testid="receipt-close-btn" onClick={() => onOpenChange(false)}>
+        <div className="flex justify-end">
+          <Button variant="outline" data-testid="receipt-close-btn" onClick={() => onOpenChange(false)}>
             Tutup
           </Button>
         </div>

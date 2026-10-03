@@ -48,6 +48,6 @@ The migration copies stores and users before dependent products, units, transact
 
 ## Atomic writes and reporting
 
-Registration, checkout, void/return, product stock updates, and category changes use PostgreSQL transactions. Checkout stock claims remain conditional SQL updates, so concurrent requests cannot both claim the same unit or oversell quantity stock. Product stock aggregation is performed with SQL `GROUP BY`. Existing report and Excel response construction remains in Python/Pandas and returns the same models and dictionaries.
+Registration, checkout, void/return, product stock updates, and category changes use PostgreSQL transactions. Checkout stock claims remain conditional SQL updates, so concurrent requests cannot both claim the same unit or oversell quantity stock. Product stock aggregation is performed with SQL `GROUP BY`. Existing report and Excel response construction remains in Python/openpyxl and returns the same models and dictionaries.
 
 For a database-independent adapter test, run `pytest tests/test_postgres_adapter.py -q` from `backend/`. A full API smoke test requires a reachable PostgreSQL/Supabase database and migrated data.

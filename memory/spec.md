@@ -144,7 +144,7 @@ Lebar teks: 32 kolom untuk 58mm, 48 kolom untuk 80mm.
 - Dekorator `@router.get("/csv/{dataset}")` di `backend/routers/backup.py` pernah hilang saat penyuntingan → semua unduhan CSV 404. Sudah dipasang kembali; jaga agar setiap endpoint punya dekorator saat menambah rute baru di file yang sama.
 
 ## Ekspor data: CSV → Excel (.xlsx)
-- CSV `;` membuat semua kolom menumpuk di satu sel pada Excel/WPS Android, jadi ekspor diganti ke **.xlsx** asli via pandas + openpyxl.
+- CSV `;` membuat semua kolom menumpuk di satu sel pada Excel/WPS Android, jadi ekspor diganti ke **.xlsx** asli via openpyxl.
 - `GET /api/backup/xlsx/{products|units|transactions}` (izin user:manage). Header berbahasa Indonesia, label status/tipe/pembayaran dimanusiakan, tanggal diformat dd/mm/yyyy HH:MM WIB, lebar kolom otomatis, baris header dibekukan. Dataset `units` ikut menyertakan Nama Produk (di-join dari products).
 - Rute `/api/backup/csv/...` DIHAPUS (404). JSON snapshot `/api/backup/export` tetap ada.
 

@@ -7,9 +7,10 @@ import io
 import json
 from datetime import datetime, timedelta, timezone
 
-import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 
 from lib.auth import Principal, require
 from lib.dates import today_iso
@@ -205,15 +206,20 @@ async def export_xlsx(
             row[header] = "" if value is None else value
         rows.append(row)
 
-    frame = pd.DataFrame(rows, columns=list(columns.values()))
     buffer = io.BytesIO()
     sheet = {"products": "Produk", "units": "Stok IMEI", "transactions": "Transaksi"}[dataset]
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        frame.to_excel(writer, index=False, sheet_name=sheet, freeze_panes=(1, 0))
-        worksheet = writer.sheets[sheet]
-        for index, header in enumerate(frame.columns, start=1):
-            widest = max([len(str(header))] + [len(str(v)[:40]) for v in frame[header].head(200)] or [0])
-            worksheet.column_dimensions[worksheet.cell(row=1, column=index).column_letter].width = min(widest + 3, 42)
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = sheet
+    headers = list(columns.values())
+    worksheet.append(headers)
+    for row in rows:
+        worksheet.append([row.get(header, "") for header in headers])
+    worksheet.freeze_panes = "A2"
+    for index, header in enumerate(worksheet[1], start=1):
+        widest = max(len(str(header.value)), *(len(str(cell.value)[:40]) for cell in list(worksheet.columns)[index - 1][1:201]))
+        worksheet.column_dimensions[get_column_letter(index)].width = min(widest + 3, 42)
+    workbook.save(buffer)
 
     return Response(
         content=buffer.getvalue(),
