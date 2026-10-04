@@ -402,7 +402,11 @@ async def add_voucher_stock(
         "voucher-stock:add",
         summary=f"Menambah stok voucher data {input.quantity} unit secara manual",
         entity_name=product.get("name", ""),
-        changes={"stock_qty": {"before": product.get("stock_qty", 0) - input.quantity, "after": product.get("stock_qty", 0)}},
+        changes=diff_changes(
+            {"stock_qty": product.get("stock_qty", 0) - input.quantity},
+            product,
+            ["stock_qty"],
+        ),
         category="stok",
     )
     return Product(**{**product, "created_at": _aware(product.get("created_at"))})
