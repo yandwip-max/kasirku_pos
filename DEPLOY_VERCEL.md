@@ -18,8 +18,11 @@ origin, so frontend requests continue to use `/api`.
      `Authorization: Bearer ...` header.
    - `CORS_ORIGINS`: the production site origin, for example
      `https://your-project.vercel.app`.
-   - `EMERGENT_EMAIL_KEY`: required if weekly/daily email delivery uses the
-     configured email provider.
+   - `SMTP_HOST`, `SMTP_PORT` (587 or 465), `SMTP_USER`, `SMTP_PASSWORD`, and
+     optionally `SMTP_FROM`: SMTP account used to send weekly/daily reports and
+     the "kirim laporan" test email. For Gmail use `smtp.gmail.com`, port 587, and
+     an App Password (requires 2-Step Verification). Alternatively set
+     `EMERGENT_EMAIL_KEY` for the managed provider; SMTP is used first when set.
    - `GOOGLE_CLIENT_ID`, `OPENAI_API_KEY`, and `OPENAI_VISION_MODEL` are
      optional and only needed when those features are enabled.
 4. Deploy. The backend applies `backend/schema.sql` at startup. Register the

@@ -1,13 +1,18 @@
-"""Email sending through Emergent's managed provider.
+"""Email sending through SMTP (SMTP_* env vars) or Emergent's managed provider.
 
 Guardrails: bodies come from server-side templates only, recipients from stored
 records — no caller ever supplies a recipient, subject, or HTML.
 """
 
+import asyncio
 import ipaddress
 import logging
 import os
 import re
+import smtplib
+import ssl
+from email.message import EmailMessage
+from email.utils import formataddr
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
@@ -108,11 +113,59 @@ def _assert_safe_email(subject: str, html: str) -> None:
                 raise ValueError(f"Anchor text {m.group(1)!r} != real link host {real!r} (G3)")
 
 
+def _smtp_settings() -> dict | None:
+    host = os.environ.get("SMTP_HOST", "").strip()
+    user = os.environ.get("SMTP_USER", "").strip()
+    password = os.environ.get("SMTP_PASSWORD", "")
+    if not (host and user and password):
+        return None
+    return {
+        "host": host,
+        "port": int(os.environ.get("SMTP_PORT", "587") or 587),
+        "user": user,
+        "password": password,
+        "sender": os.environ.get("SMTP_FROM", "").strip() or user,
+    }
+
+
+def email_configured() -> bool:
+    return _smtp_settings() is not None or bool(EMAIL_KEY)
+
+
+def _send_smtp(settings: dict, to: str, subject: str, html: str) -> None:
+    message = EmailMessage()
+    message["From"] = formataddr((EMAIL_FROM_NAME, settings["sender"]))
+    message["To"] = to
+    message["Subject"] = subject
+    if EMAIL_REPLY_TO:
+        message["Reply-To"] = EMAIL_REPLY_TO
+    message.set_content("Email ini berisi tampilan HTML. Buka dengan aplikasi email yang mendukung HTML.")
+    message.add_alternative(html, subtype="html")
+    # Port 465 is implicit TLS; every other port (587) upgrades with STARTTLS.
+    if settings["port"] == 465:
+        server = smtplib.SMTP_SSL(settings["host"], settings["port"], timeout=30, context=ssl.create_default_context())
+    else:
+        server = smtplib.SMTP(settings["host"], settings["port"], timeout=30)
+    with server:
+        if settings["port"] != 465:
+            server.starttls(context=ssl.create_default_context())
+        server.login(settings["user"], settings["password"])
+        server.send_message(message)
+
+
 async def send_email(*, to: str, subject: str, html: str) -> str | None:
-    """Send one templated email. Returns the provider id, or None when unconfigured."""
+    """Send one templated email. Returns the provider id, or None when unconfigured or failed."""
     _assert_safe_email(subject, html)
+    smtp = _smtp_settings()
+    if smtp:
+        try:
+            await asyncio.to_thread(_send_smtp, smtp, to, subject, html)
+            return "smtp"
+        except Exception as e:
+            logger.error("SMTP send failed: %s", e)
+            return None
     if not EMAIL_KEY:
-        logger.error("EMERGENT_EMAIL_KEY belum diset — email tidak dikirim")
+        logger.error("Penyedia email belum diatur (SMTP_* atau EMERGENT_EMAIL_KEY) — email tidak dikirim")
         return None
 
     payload: dict = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}

@@ -17,7 +17,7 @@ from lib.dates import today_iso
 from lib.db import db
 from lib.scoped import ScopedRepo, scoped_repo
 from routers.cron import WIB, _recap_html, _store_recap
-from lib.email import send_email
+from lib.email import email_configured, send_email
 
 router = APIRouter(prefix="/backup")
 
@@ -134,6 +134,12 @@ async def send_report_now(principal: Principal = Depends(require("user:manage"))
     if last and (now - last["sent_at"].replace(tzinfo=timezone.utc)) < timedelta(minutes=2):
         raise HTTPException(status_code=429, detail="Tunggu 2 menit sebelum mengirim email uji lagi")
 
+    if not email_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="Layanan email belum dikonfigurasi di server. Atur SMTP_HOST, SMTP_USER, dan SMTP_PASSWORD di environment variables.",
+        )
+
     now_wib = datetime.now(WIB)
     period = f"{(now_wib - timedelta(days=6)).strftime('%d %b')} – {now_wib.strftime('%d %b %Y')}"
     recap = await _store_recap(principal.store_id)
@@ -148,8 +154,8 @@ async def send_report_now(principal: Principal = Depends(require("user:manage"))
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Email gagal dikirim ke {user['email']}. Pastikan alamatnya aktif dan benar "
-                "(email contoh seperti @demo.id ditolak penyedia email)."
+                f"Email gagal dikirim ke {user['email']}. Periksa alamat tujuan dan kredensial email server "
+                "(lihat log backend untuk detail penyebab)."
             ),
         )
 

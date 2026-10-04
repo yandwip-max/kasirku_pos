@@ -211,8 +211,11 @@ is also supported. Set separate random values for `JWT_SECRET` and
 `WEBHOOK_CRON_SECRET`; the cron runner must send the latter as its bearer token.
 The daily dispatcher is called every minute and sends each enabled store's
 transaction summary after its local closing time.
-Set `EMERGENT_EMAIL_KEY` from the configured email provider to enable delivery;
-reports go to the active Pemilik accounts' stored email addresses. Failed sends
+Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` (and optionally
+`SMTP_FROM`) to deliver through any SMTP provider, or set `EMERGENT_EMAIL_KEY` to
+use the managed provider; SMTP is used first when both are present. Gmail needs an
+App Password with `smtp.gmail.com` on port 587.
+Reports go to the active Pemilik accounts' stored email addresses. Failed sends
 are retried no more often than every 20 minutes.
 Start the backend once so it creates the schema. To create demo data, open a
 second PowerShell terminal and change to `backend`,
