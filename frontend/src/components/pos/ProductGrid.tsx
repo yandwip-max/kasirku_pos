@@ -98,7 +98,7 @@ export default function ProductGrid({ products, isLoading, isError, onAdd }: Pro
                 disabled={p.type !== "non_fisik" && p.stock < 1}
                 onClick={() => onAdd(p)}
               >
-                {p.type === "non_fisik" ? "Jual Layanan" : p.type === "handphone" ? "Pilih IMEI" : p.type === "voucher" ? "Pilih Barcode" : p.track_imei ? "Pilih IMEI" : "Tambah"}
+                {p.type === "non_fisik" ? "Jual Layanan" : p.type === "handphone" ? "Pilih IMEI" : p.type === "voucher" ? (p.track_imei ? "Pilih Barcode" : "Tambah") : p.track_imei ? "Pilih IMEI" : "Tambah"}
               </Button>
             </div>
           );

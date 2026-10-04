@@ -193,7 +193,7 @@ function ProductFormDialog({
       cost_price: parseRupiah(form.cost_price),
       sell_price: parseRupiah(form.sell_price),
       wholesale_price: form.type === "voucher" ? parseRupiah(form.wholesale_price) : 0,
-      stock_qty: form.type === "handphone" || form.type === "voucher" || form.type === "non_fisik" || form.track_imei ? 0 : parseRupiah(form.stock_qty),
+      stock_qty: form.type === "handphone" || form.type === "non_fisik" || form.track_imei ? 0 : parseRupiah(form.stock_qty),
       min_stock: parseRupiah(form.min_stock) || 5,
       track_imei: form.track_imei,
     });
@@ -321,7 +321,7 @@ function ProductFormDialog({
                 <Checkbox
                   id="product-track-imei"
                   checked={form.track_imei}
-                  disabled={form.type === "handphone" || form.type === "voucher"}
+                  disabled={form.type === "handphone"}
                   onCheckedChange={(checked) => set("track_imei", checked === true)}
                   data-testid="product-track-imei-checkbox"
                 />
@@ -331,6 +331,11 @@ function ProductFormDialog({
                 <p className="-mt-1 text-xs text-slate-500">
                   Aktifkan untuk melacat stok per unit IMEI/barcode (seperti handphone). Non-aktifkan untuk melacat
                   stok per jumlah (pcs).
+                </p>
+              ) : form.type === "voucher" ? (
+                <p className="-mt-1 text-xs text-slate-500">
+                  Aktifkan untuk mengisi stok per barcode unik. Non-aktifkan untuk mengisi jumlah stok langsung; barcode
+                  tiap unit bisa diatur nanti lewat Kelola Unit.
                 </p>
               ) : (
                 <p className="-mt-1 text-xs text-slate-500">
@@ -468,8 +473,20 @@ function ProductFormDialog({
           {form.type === "voucher" && (
             <>
               <p className="rounded-lg bg-sky-50 p-3 text-xs leading-relaxed text-sky-800">
-                Stok voucher data dicatat per kode unik. Simpan produk, lalu scan tiap barcode di Kelola Unit saat stok masuk.
+                {form.track_imei
+                  ? "Stok voucher data dicatat per kode unik. Simpan produk, lalu scan tiap barcode di Kelola Unit saat stok masuk."
+                  : "Isi jumlah stok langsung. Setelah disimpan, atur barcode sesuai jumlah tersebut lewat Kelola Unit."}
               </p>
+              {!form.track_imei && !product && (
+                <NumberField
+                  id="product-stock"
+                  label="Jumlah Stok"
+                  value={form.stock_qty}
+                  onChange={(v) => set("stock_qty", v)}
+                  placeholder="0"
+                  testid="product-stock-input"
+                />
+              )}
               <NumberField
                 id="product-min-stock"
                 label="Batas stok menipis (unit)"

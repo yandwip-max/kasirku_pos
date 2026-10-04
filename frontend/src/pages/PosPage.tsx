@@ -163,6 +163,18 @@ export default function PosPage() {
       setServiceProduct(product);
       return;
     }
+    if (product.type === "voucher" && !product.track_imei) {
+      if (product.stock_qty > 0) {
+        addAccessory({ ...product, stock: product.stock_qty });
+        return;
+      }
+      if (product.stock < 1) {
+        toast.error("Stok voucher habis");
+        return;
+      }
+      setImeiProduct(product);
+      return;
+    }
     if (product.type === "handphone" || product.type === "voucher" || product.track_imei) {
       if (product.stock < 1) {
         toast.error(product.type === "voucher" ? "Belum ada barcode voucher yang tersedia" : "Belum ada unit stok untuk produk ini");

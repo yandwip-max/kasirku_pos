@@ -101,8 +101,10 @@ async def list_products(
     out = []
     for doc in docs:
         # Serialized = stock counted as distinct units (IMEI/barcode)
-        serialized = doc.get("type") in {"handphone", "voucher"} or doc.get("track_imei", False)
+        serialized = doc.get("type") == "handphone" or doc.get("track_imei", False)
         stock = counts.get(doc["id"], 0) if serialized else doc.get("stock_qty", 0)
+        if doc.get("type") == "voucher" and not serialized:
+            stock += counts.get(doc["id"], 0)  # pending count + scanned units
         if low_stock and (doc.get("type") == "non_fisik" or stock >= doc.get("min_stock", 5)):
             continue
         out.append(_product_out(doc, principal, stock))
@@ -129,7 +131,7 @@ async def scan_product(
             raise HTTPException(status_code=404, detail="Produk untuk barcode tidak ditemukan")
         stock = await repo.count_documents(
             "product_units", {"product_id": product["id"], "status": "in_stock"}
-        ) if product["type"] in {"handphone", "voucher"} or product.get("track_imei", False) else product.get("stock_qty", 0)
+        ) if product["type"] == "handphone" or product.get("track_imei", False) else product.get("stock_qty", 0)
         return ProductScanResult(product=_product_out(product, principal, stock), unit=_unit_out(unit, principal))
 
     product = await repo.find_one(
@@ -174,10 +176,11 @@ async def create_product(
         input.stock_qty = 0  # stock is tracked as serialized units
         input.track_imei = True  # always on for handphones
     if input.type == "voucher":
-        input.stock_qty = 0  # each data voucher is stocked and sold by its own barcode
-        input.track_imei = True  # always on for vouchers
-    if input.track_imei and input.type not in {"handphone", "voucher"}:
-        input.stock_qty = 0  # unit-tracked accessories start with zero qty stock
+        # Without IMEI tracking the entered quantity is a pending count; barcodes are
+        # registered later in Kelola Unit, each converting one pending count into a unit.
+        input.stock_qty = 0 if input.track_imei else max(input.stock_qty, 0)
+    if input.track_imei and input.type != "voucher":
+        input.stock_qty = 0  # unit-tracked products start with zero qty stock
     # one product name per store: a duplicate would split stock across two rows
     clash = await repo.find_one("products", {"name": {"$regex": f"^{re.escape(input.name.strip())}$", "$options": "i"}})
     if clash:

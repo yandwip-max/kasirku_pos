@@ -73,6 +73,13 @@ def _range_filter(start: str, end: str) -> dict:
     return bounds
 
 
+def _is_serialized(product: dict, item: CartItemIn) -> bool:
+    """Phones and IMEI-tracked products always sell per unit; a count-based voucher sells per unit only when a scanned unit is picked."""
+    if product["type"] == "handphone" or product.get("track_imei", False):
+        return True
+    return product["type"] == "voucher" and bool(item.unit_id)
+
+
 def _tier_price(product: dict, tier: str) -> int:
     """Voucher lines may be sold at the wholesale tier; everything else is retail."""
     if product["type"] == "voucher" and tier == "grosir":
@@ -334,7 +341,7 @@ async def create_transaction(
         product = products_by_id[item.product_id]
         if not product:
             raise HTTPException(status_code=404, detail="Produk tidak ditemukan")
-        serialized = product["type"] in {"handphone", "voucher"} or product.get("track_imei", False)
+        serialized = _is_serialized(product, item)
         if product["type"] == "non_fisik":
             target = (item.service_target or "").strip()
             service_category = product.get("service_category")
@@ -369,7 +376,7 @@ async def create_transaction(
     planned: list[tuple[dict, Optional[dict], TransactionItemOut]] = []
     for item in input.items:
         product = products_by_id[item.product_id]
-        serialized = product["type"] in {"handphone", "voucher"} or product.get("track_imei", False)
+        serialized = _is_serialized(product, item)
         service_amount = None
         if serialized:
             unit = units_by_id[item.unit_id]
@@ -387,8 +394,8 @@ async def create_transaction(
             qty = 1
         else:
             unit = None
-            tier = "ritel"
-            price = product["sell_price"]
+            tier = item.price_tier if product["type"] == "voucher" else "ritel"
+            price = _tier_price(product, tier)
             cost = product.get("cost_price", 0)
             qty = item.qty
 
