@@ -15,6 +15,7 @@ from models.product import (
     ProductUnitCreate,
     ProductUpdate,
     ProductWithStock,
+    VoucherStockAdd,
 )
 
 router = APIRouter(prefix="/products")
@@ -100,11 +101,12 @@ async def list_products(
 
     out = []
     for doc in docs:
-        # Serialized = stock counted as distinct units (IMEI/barcode)
-        serialized = doc.get("type") == "handphone" or doc.get("track_imei", False)
-        stock = counts.get(doc["id"], 0) if serialized else doc.get("stock_qty", 0)
-        if doc.get("type") == "voucher" and not serialized:
-            stock += counts.get(doc["id"], 0)  # pending count + scanned units
+        # Voucher data can combine a manual quantity with individually scanned barcodes.
+        if doc.get("type") == "voucher":
+            stock = doc.get("stock_qty", 0) + counts.get(doc["id"], 0)
+        else:
+            serialized = doc.get("type") == "handphone" or doc.get("track_imei", False)
+            stock = counts.get(doc["id"], 0) if serialized else doc.get("stock_qty", 0)
         if low_stock and (doc.get("type") == "non_fisik" or stock >= doc.get("min_stock", 5)):
             continue
         out.append(_product_out(doc, principal, stock))
@@ -129,9 +131,14 @@ async def scan_product(
         product = await repo.find_one("products", {"id": unit["product_id"], "is_active": {"$ne": False}})
         if not product:
             raise HTTPException(status_code=404, detail="Produk untuk barcode tidak ditemukan")
-        stock = await repo.count_documents(
+        unit_stock = await repo.count_documents(
             "product_units", {"product_id": product["id"], "status": "in_stock"}
-        ) if product["type"] == "handphone" or product.get("track_imei", False) else product.get("stock_qty", 0)
+        )
+        stock = (
+            product.get("stock_qty", 0) + unit_stock
+            if product["type"] == "voucher"
+            else unit_stock if product["type"] == "handphone" or product.get("track_imei", False) else product.get("stock_qty", 0)
+        )
         return ProductScanResult(product=_product_out(product, principal, stock), unit=_unit_out(unit, principal))
 
     product = await repo.find_one(
@@ -372,6 +379,33 @@ async def add_unit(
         category="stok",
     )
     return unit
+
+
+@router.post("/{product_id}/voucher-stock", response_model=Product)
+@db.transactional
+async def add_voucher_stock(
+    product_id: str,
+    input: VoucherStockAdd,
+    principal: Principal = Depends(require("product:write")),
+    repo: ScopedRepo = Depends(scoped_repo),
+):
+    product = await repo.find_one_and_update(
+        "products",
+        {"id": product_id, "type": "voucher"},
+        {"$inc": {"stock_qty": input.quantity}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not product:
+        raise HTTPException(status_code=404, detail="Produk voucher data tidak ditemukan")
+    await log_activity(
+        principal,
+        "voucher-stock:add",
+        summary=f"Menambah stok voucher data {input.quantity} unit secara manual",
+        entity_name=product.get("name", ""),
+        changes={"stock_qty": {"before": product.get("stock_qty", 0) - input.quantity, "after": product.get("stock_qty", 0)}},
+        category="stok",
+    )
+    return Product(**{**product, "created_at": _aware(product.get("created_at"))})
 
 
 @router.delete("/{product_id}/units/{unit_id}", status_code=204)

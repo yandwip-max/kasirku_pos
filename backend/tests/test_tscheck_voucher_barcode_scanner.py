@@ -97,3 +97,49 @@ def test_cashier_cannot_manage_voucher_stock_or_owner_settings(client):
         json={"name": "Toko Kasir", "address": "", "phone": ""},
     )
     assert settings.status_code == 403, settings.text
+
+
+def test_voucher_stock_can_be_added_manually_and_sold_without_a_barcode(client):
+    owner = auth_headers(client, PEMILIK)
+    suffix = uuid.uuid4().hex[:8]
+    product_response = client.post(
+        "/products",
+        headers=owner,
+        json={
+            "name": f"Voucher Manual {suffix}",
+            "type": "voucher",
+            "sell_price": 25000,
+            "cost_price": 20000,
+            "track_imei": True,
+        },
+    )
+    assert product_response.status_code == 201, product_response.text
+    product_id = product_response.json()["id"]
+
+    stock_response = client.post(
+        f"/products/{product_id}/voucher-stock",
+        headers=owner,
+        json={"quantity": 3},
+    )
+    assert stock_response.status_code == 200, stock_response.text
+    assert stock_response.json()["stock_qty"] == 3
+
+    products = client.get("/products?type=voucher", headers=owner)
+    voucher = next(item for item in products.json() if item["id"] == product_id)
+    assert voucher["stock"] == 3
+
+    sale = client.post(
+        "/transactions",
+        headers=owner,
+        json={
+            "items": [{"product_id": product_id, "qty": 2}],
+            "payment_method": "qris",
+        },
+    )
+    assert sale.status_code == 201, sale.text
+    assert sale.json()["items"][0]["unit_id"] is None
+    assert sale.json()["items"][0]["qty"] == 2
+
+    products = client.get("/products?type=voucher", headers=owner)
+    voucher = next(item for item in products.json() if item["id"] == product_id)
+    assert voucher["stock"] == 1

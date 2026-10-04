@@ -34,7 +34,7 @@ from routers.attendance import router as attendance_router
 async def lifespan(app: FastAPI):
     await ensure_indexes()
     yield
-    client.close()
+    await client.close()
 
 
 # Create the main app without a prefix

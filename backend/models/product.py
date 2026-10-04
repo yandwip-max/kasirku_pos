@@ -143,6 +143,10 @@ class ProductUnitCreate(BaseModel):
         return _coerce_rupiah(value)
 
 
+class VoucherStockAdd(BaseModel):
+    quantity: int = Field(gt=0)
+
+
 class ProductScanResult(BaseModel):
     product: ProductWithStock
     unit: Optional[ProductUnit] = None

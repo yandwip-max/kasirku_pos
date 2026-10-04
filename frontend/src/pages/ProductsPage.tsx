@@ -533,6 +533,7 @@ function UnitManagerDialog({
   const [capacity, setCapacity] = useState("");
   const [cost, setCost] = useState(product?.cost_price ? String(product.cost_price) : "");
   const [sell, setSell] = useState(product?.sell_price ? String(product.sell_price) : "");
+  const [manualQuantity, setManualQuantity] = useState("");
   const queryClient = useQueryClient();
 
   const unitsQuery = useQuery({
@@ -576,12 +577,33 @@ function UnitManagerDialog({
     onError: (err) => toast.error(apiErrorMessage(err, "Gagal menghapus unit")),
   });
 
+  const addManualVoucherStock = useMutation({
+    mutationFn: () =>
+      apiPost<Product>(`/products/${product?.id}/voucher-stock`, {
+        quantity: parseRupiah(manualQuantity),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      setManualQuantity("");
+      toast.success("Stok voucher data berhasil ditambahkan");
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Gagal menambah stok voucher data")),
+  });
+
   function submitUnit() {
     if (product?.type === "voucher" ? !barcode.trim() : !imei.trim()) {
       toast.error(product?.type === "voucher" ? "Barcode voucher data wajib diisi" : "Nomor IMEI wajib diisi");
       return;
     }
     addUnit.mutate();
+  }
+
+  function submitManualVoucherStock() {
+    if (parseRupiah(manualQuantity) < 1) {
+      toast.error("Jumlah stok minimal 1 unit");
+      return;
+    }
+    addManualVoucherStock.mutate();
   }
 
   return (
@@ -671,6 +693,28 @@ function UnitManagerDialog({
         <p className="-mt-1 text-xs text-slate-400">
           Harga modal &amp; jual per unit terisi otomatis dari harga produk — ubah jika harga beli unit berbeda.
         </p>
+
+        {product?.type === "voucher" && (
+          <div className="grid gap-2 rounded-lg border border-violet-100 bg-violet-50 p-3 sm:grid-cols-[1fr_auto]">
+            <NumberField
+              id="voucher-manual-quantity"
+              label="Tambah Stok Manual (unit)"
+              value={manualQuantity}
+              onChange={setManualQuantity}
+              placeholder="cth. 10"
+              testid="voucher-manual-quantity-input"
+              hint="Untuk voucher yang tidak memiliki barcode unik. Tetap dapat dijual dari POS."
+            />
+            <Button
+              className="self-end"
+              onClick={submitManualVoucherStock}
+              disabled={addManualVoucherStock.isPending}
+              data-testid="voucher-add-manual-stock-btn"
+            >
+              <Plus className="h-4 w-4" /> Tambah Stok
+            </Button>
+          </div>
+        )}
 
         <div className="overflow-hidden rounded-lg border border-slate-200">
           <Table>

@@ -75,9 +75,11 @@ def _range_filter(start: str, end: str) -> dict:
 
 def _is_serialized(product: dict, item: CartItemIn) -> bool:
     """Phones and IMEI-tracked products always sell per unit; a count-based voucher sells per unit only when a scanned unit is picked."""
+    if product["type"] == "voucher":
+        return bool(item.unit_id)
     if product["type"] == "handphone" or product.get("track_imei", False):
         return True
-    return product["type"] == "voucher" and bool(item.unit_id)
+    return False
 
 
 def _tier_price(product: dict, tier: str) -> int:
