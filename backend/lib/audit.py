@@ -88,18 +88,18 @@ async def log_activity(
     changes: Optional[list[ActivityChange]] = None,
     category: Optional[str] = None,
 ) -> None:
-    entry = ActivityLog(
-        store_id=principal.store_id,
-        actor_id=principal.user_id,
-        actor_name=principal.name,
-        actor_role=principal.role,
-        action=action,  # type: ignore[arg-type]
-        category=category or category_for(action, [c.field for c in (changes or [])]),  # type: ignore[arg-type]
-        entity_name=entity_name,
-        summary=summary,
-        changes=changes or [],
-    )
     try:
+        entry = ActivityLog(
+            store_id=principal.store_id,
+            actor_id=principal.user_id,
+            actor_name=principal.name,
+            actor_role=principal.role,
+            action=action,  # type: ignore[arg-type]
+            category=category or category_for(action, [c.field for c in (changes or [])]),  # type: ignore[arg-type]
+            entity_name=entity_name,
+            summary=summary,
+            changes=changes or [],
+        )
         await db.activity_logs.insert_one(entry.model_dump())
     except Exception:  # pragma: no cover - the audit trail must never break the action
         logger.exception("gagal menulis log aktivitas: %s", action)

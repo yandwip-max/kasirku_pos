@@ -399,7 +399,7 @@ async def add_voucher_stock(
         raise HTTPException(status_code=404, detail="Produk voucher data tidak ditemukan")
     await log_activity(
         principal,
-        "voucher-stock:add",
+        "unit:add",
         summary=f"Menambah stok voucher data {input.quantity} unit secara manual",
         entity_name=product.get("name", ""),
         changes=diff_changes(
