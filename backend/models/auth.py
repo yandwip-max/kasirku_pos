@@ -59,6 +59,26 @@ class RegisterIn(BaseModel):
     password: str = Field(min_length=6, max_length=72)
 
 
+class CloneStoreIn(BaseModel):
+    """New store seeded from the caller's store (categories + products), with its own owner account."""
+
+    store_name: str = Field(min_length=2, max_length=80)
+    store_address: str = ""
+    store_phone: str = ""
+    name: str = Field(min_length=2, max_length=60)
+    email: EmailStr
+    password: str = Field(min_length=6, max_length=72)
+    # the signed-in owner's own password, re-entered to confirm the copy
+    current_password: str = Field(min_length=1, max_length=72)
+
+
+class CloneStoreOut(BaseModel):
+    store: Store
+    owner: UserOut
+    categories_copied: int
+    products_copied: int
+
+
 class LoginIn(BaseModel):
     email: EmailStr
     password: str

@@ -1,12 +1,13 @@
 import os
-from datetime import timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 import google.auth.exceptions
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
 from fastapi import APIRouter, Depends, HTTPException
-from pymongo import ReturnDocument
+from pymongo import DESCENDING, ReturnDocument
 from starlette.concurrency import run_in_threadpool
 
 from lib.auth import (
@@ -21,7 +22,12 @@ from lib.auth import (
 from lib.audit import diff_changes, log_activity
 from models.audit import ActivityChange
 from lib.db import db
+from lib.scoped import ScopedRepo
+from models.category import Category
+from models.product import Product
 from models.auth import (
+    CloneStoreIn,
+    CloneStoreOut,
     CreateUserIn,
     GoogleLoginIn,
     LoginIn,
@@ -92,6 +98,106 @@ async def register(input: RegisterIn):
     await db.stores.insert_one(store.model_dump())
     await db.users.insert_one(user.model_dump())
     return SessionOut(token=create_token(user.id), user=_user_out(user.model_dump()), store=store)
+
+
+CLONE_DAILY_LIMIT = 3
+CLONE_MAX_WRONG_PASSWORDS = 5
+CLONE_LOCKOUT = timedelta(minutes=15)
+
+
+@router.post("/stores/clone", response_model=CloneStoreOut, status_code=201)
+async def clone_store(
+    input: CloneStoreIn,
+    principal: Principal = Depends(require("user:manage")),
+):
+    """Create a new store with its own Pemilik account, seeded with a *copy* of the caller's
+    categories and products. Guarded because it duplicates a shop's whole catalogue:
+    owner-only, the owner must re-enter their own password (a stolen/left-open session is not
+    enough), wrong passwords lock the action briefly, and clones per store are capped per day.
+    Every attempt lands in the audit log."""
+    now = datetime.now(timezone.utc)
+    recent = (
+        await db.activity_logs.find(
+            {"store_id": principal.store_id, "action": {"$in": ["store:clone", "store:clone_denied"]}}
+        )
+        .sort([("at", DESCENDING)])
+        .limit(100)
+        .to_list(100)
+    )
+    denied = [
+        r for r in recent
+        if r["action"] == "store:clone_denied" and r.get("actor_id") == principal.user_id
+        and now - _aware(r["at"]) < CLONE_LOCKOUT
+    ]
+    if len(denied) >= CLONE_MAX_WRONG_PASSWORDS:
+        raise HTTPException(status_code=429, detail="Terlalu banyak percobaan password salah. Coba lagi dalam 15 menit.")
+    cloned_today = [r for r in recent if r["action"] == "store:clone" and now - _aware(r["at"]) < timedelta(days=1)]
+    if len(cloned_today) >= CLONE_DAILY_LIMIT:
+        raise HTTPException(status_code=429, detail=f"Batas pembuatan toko baru {CLONE_DAILY_LIMIT} kali per hari tercapai.")
+
+    me = await db.users.find_one({"id": principal.user_id, "store_id": principal.store_id})
+    # 403 (not 401): the session is valid, only the confirmation failed — the UI must not log out
+    if not me or not verify_password(input.current_password, me["password_hash"]):
+        await log_activity(
+            principal,
+            "store:clone_denied",
+            summary="Gagal membuat toko baru: konfirmasi password salah",
+            entity_name=input.store_name.strip(),
+            category="toko",
+        )
+        raise HTTPException(status_code=403, detail="Password Anda salah. Konfirmasi password diperlukan untuk menyalin data toko.")
+
+    return await _create_cloned_store(input, principal)
+
+
+@db.transactional
+async def _create_cloned_store(input: CloneStoreIn, principal: Principal) -> CloneStoreOut:
+    email = input.email.strip().lower()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=409, detail="Email sudah terdaftar. Gunakan email lain untuk toko baru.")
+
+    store = Store(name=input.store_name.strip(), address=input.store_address.strip(), phone=input.store_phone.strip())
+    owner = User(
+        store_id=store.id,
+        name=input.name.strip(),
+        email=email,
+        password_hash=hash_password(input.password),
+        role="pemilik",
+    )
+    await db.stores.insert_one(store.model_dump())
+    await db.users.insert_one(owner.model_dump())
+
+    source = ScopedRepo(principal.store_id)
+    target = ScopedRepo(store.id)
+
+    categories = [
+        Category(name=doc["name"]).model_dump(exclude={"store_id"})
+        for doc in await source.find("categories", {}).sort("name", 1).to_list(1000)
+    ]
+    if categories:
+        await target.insert_many("categories", categories)
+
+    products = []
+    for doc in await source.find("products", {}).to_list(100000):
+        copy = Product.model_validate({**doc, "id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc)})
+        copy.stock_qty = 0  # physical stock belongs to each shop; only the catalogue is shared
+        products.append(copy.model_dump(exclude={"store_id"}))
+    if products:
+        await target.insert_many("products", products)
+
+    await log_activity(
+        principal,
+        "store:clone",
+        summary=f"Membuat toko baru dari salinan produk: {store.name}",
+        entity_name=store.name,
+        category="toko",
+    )
+    return CloneStoreOut(
+        store=store,
+        owner=_user_out(owner.model_dump()),
+        categories_copied=len(categories),
+        products_copied=len(products),
+    )
 
 
 @router.post("/login", response_model=SessionOut)

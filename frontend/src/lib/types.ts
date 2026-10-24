@@ -108,6 +108,23 @@ export interface StoreUpdatePayload {
   receipt_thanks?: string;
 }
 
+export interface CloneStorePayload {
+  store_name: string;
+  store_address: string;
+  store_phone: string;
+  name: string;
+  email: string;
+  password: string;
+  current_password: string;
+}
+
+export interface CloneStoreResult {
+  store: Store;
+  owner: User;
+  categories_copied: number;
+  products_copied: number;
+}
+
 export interface Product {
   id: string;
   store_id: string;

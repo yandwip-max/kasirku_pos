@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { KeyRound, Pencil, Store as StoreIcon } from "lucide-react";
-import { apiPatch } from "@/lib/api";
+import { Copy, KeyRound, Pencil, Store as StoreIcon } from "lucide-react";
+import { apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
-import type { ResetPasswordPayload, Store, StoreUpdatePayload, User } from "@/lib/types";
+import type {
+  CloneStorePayload,
+  CloneStoreResult,
+  ResetPasswordPayload,
+  Store,
+  StoreUpdatePayload,
+  User,
+} from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -251,6 +258,147 @@ export function StoreProfileCard() {
             </Button>
             <Button onClick={submit} disabled={save.isPending} data-testid="store-profile-save-btn">
               {save.isPending ? "Menyimpan…" : "Simpan Profil"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+const EMPTY_CLONE_FORM: CloneStorePayload = {
+  store_name: "",
+  store_address: "",
+  store_phone: "",
+  name: "",
+  email: "",
+  password: "",
+  current_password: "",
+};
+
+/** Creates a separate store seeded with a copy of this store's categories and products. */
+export function CloneStoreCard() {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<CloneStorePayload>(EMPTY_CLONE_FORM);
+  const set = (key: keyof CloneStorePayload) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const clone = useMutation({
+    mutationFn: (payload: CloneStorePayload) => apiPost<CloneStoreResult>("/auth/stores/clone", payload),
+    onSuccess: (result) => {
+      toast.success(
+        `Toko "${result.store.name}" dibuat: ${result.categories_copied} folder & ${result.products_copied} produk disalin. Login dengan ${result.owner.email}`,
+      );
+      setOpen(false);
+      setForm(EMPTY_CLONE_FORM);
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Gagal membuat toko baru")),
+  });
+
+  function submit() {
+    if (form.store_name.trim().length < 2 || form.name.trim().length < 2) {
+      toast.error("Nama toko dan nama pemilik minimal 2 karakter");
+      return;
+    }
+    if (!form.email.includes("@")) {
+      toast.error("Email pemilik toko baru tidak valid");
+      return;
+    }
+    if (form.password.length < 6) {
+      toast.error("Password minimal 6 karakter");
+      return;
+    }
+    if (!form.current_password) {
+      toast.error("Masukkan password Anda saat ini untuk konfirmasi");
+      return;
+    }
+    clone.mutate({ ...form, store_name: form.store_name.trim(), name: form.name.trim(), email: form.email.trim() });
+  }
+
+  return (
+    <>
+      <Card data-testid="clone-store-card">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-[#0284C7]">
+              <Copy className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-heading text-base font-bold">Buat Toko Baru dari Toko Ini</p>
+              <p className="text-sm text-slate-500">
+                Folder dan produk disalin (stok mulai 0). Toko baru punya akun sendiri; perubahan di salah satu toko
+                tidak memengaruhi toko lainnya. Transaksi dan riwayat tidak disalin.
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" data-testid="clone-store-btn" onClick={() => setOpen(true)}>
+            <Copy className="h-4 w-4" /> Buat Toko Baru
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="clone-store-dialog">
+          <DialogHeader>
+            <DialogTitle>Buat Toko Baru</DialogTitle>
+            <DialogDescription>
+              Anda tetap login di toko ini. Pemilik toko baru login dengan email dan password di bawah.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="clone-store-name">Nama Toko Baru *</Label>
+              <Input id="clone-store-name" value={form.store_name} onChange={set("store_name")} data-testid="clone-store-name-input" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="clone-store-address">Alamat Toko</Label>
+              <Input id="clone-store-address" value={form.store_address} onChange={set("store_address")} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="clone-store-phone">No. WhatsApp Toko</Label>
+              <Input id="clone-store-phone" value={form.store_phone} onChange={set("store_phone")} />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="clone-owner-name">Nama Pemilik Toko Baru *</Label>
+              <Input id="clone-owner-name" value={form.name} onChange={set("name")} data-testid="clone-owner-name-input" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="clone-owner-email">Email Login *</Label>
+              <Input id="clone-owner-email" type="email" autoComplete="off" value={form.email} onChange={set("email")} data-testid="clone-owner-email-input" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="clone-owner-password">Password * (min. 6 karakter)</Label>
+              <Input
+                id="clone-owner-password"
+                type="password"
+                autoComplete="new-password"
+                value={form.password}
+                onChange={set("password")}
+                data-testid="clone-owner-password-input"
+              />
+            </div>
+            <div className="grid gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <Label htmlFor="clone-confirm-password">Konfirmasi: Password Anda Saat Ini *</Label>
+              <Input
+                id="clone-confirm-password"
+                type="password"
+                autoComplete="current-password"
+                value={form.current_password}
+                onChange={set("current_password")}
+                onKeyDown={(e) => e.key === "Enter" && !clone.isPending && submit()}
+                data-testid="clone-confirm-password-input"
+              />
+              <p className="text-[11px] text-amber-800">
+                Diperlukan demi keamanan karena seluruh katalog produk toko ini akan disalin. Maksimal 3 toko baru per hari.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Batal
+            </Button>
+            <Button onClick={submit} disabled={clone.isPending} data-testid="clone-store-save-btn">
+              {clone.isPending ? "Membuat…" : "Buat Toko"}
             </Button>
           </DialogFooter>
         </DialogContent>
