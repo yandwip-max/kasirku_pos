@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 COLLECTIONS = {
     "status_checks", "stores", "users", "attendance", "daily_report_runs",
     "products", "product_units", "transactions", "transaction_items",
-    "activity_logs", "categories", "email_tests", "cron_runs", "backups",
+    "activity_logs", "categories", "email_tests", "cron_runs", "backups", "login_challenges",
 }
 
 _connection: ContextVar[Optional[asyncpg.Connection]] = ContextVar("postgres_connection", default=None)

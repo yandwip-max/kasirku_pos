@@ -1,7 +1,10 @@
+import hmac
 import os
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List
+from html import escape
+from typing import List, Optional, Union
 
 import google.auth.exceptions
 from google.auth.transport.requests import Request as GoogleRequest
@@ -22,6 +25,16 @@ from lib.auth import (
 from lib.audit import diff_changes, log_activity
 from models.audit import ActivityChange
 from lib.db import db
+from lib.email import email_configured, send_email
+from lib.login_verification import (
+    LOGIN_CODE_MAX_ATTEMPTS,
+    LOGIN_CODE_SEND_WINDOW,
+    LOGIN_CODE_SENDS_PER_WINDOW,
+    LOGIN_CODE_TTL,
+    hash_login_code,
+    login_code_html,
+    new_login_code,
+)
 from lib.scoped import ScopedRepo
 from models.category import Category
 from models.product import Product
@@ -30,17 +43,20 @@ from models.auth import (
     CloneStoreOut,
     CreateUserIn,
     GoogleLoginIn,
+    LoginChallengeOut,
     LoginIn,
     MeOut,
     RegisterIn,
     ResetPasswordIn,
     SessionOut,
     Store,
+    StoreSecurityUpdateIn,
     StoreUpdateIn,
     StoreScheduleUpdateIn,
     UpdateUserIn,
     User,
     UserOut,
+    VerifyLoginIn,
 )
 
 router = APIRouter(prefix="/auth")
@@ -74,6 +90,7 @@ def _store_out(doc: dict) -> Store:
         closing_time=doc.get("closing_time", defaults.closing_time),
         timezone=doc.get("timezone", defaults.timezone),
         daily_report_enabled=doc.get("daily_report_enabled", defaults.daily_report_enabled),
+        login_verification_enabled=doc.get("login_verification_enabled", False),
         created_at=_aware(doc["created_at"]),
     )
 
@@ -200,7 +217,7 @@ async def _create_cloned_store(input: CloneStoreIn, principal: Principal) -> Clo
     )
 
 
-@router.post("/login", response_model=SessionOut)
+@router.post("/login", response_model=Union[SessionOut, LoginChallengeOut])
 async def login(input: LoginIn):
     email = input.email.strip().lower()
     user = await db.users.find_one({"email": email})
@@ -213,6 +230,87 @@ async def login(input: LoginIn):
     store = await db.stores.find_one({"id": user["store_id"]})
     if not store:
         raise HTTPException(status_code=409, detail="Data toko tidak ditemukan")
+    if store.get("login_verification_enabled"):
+        # password alone is not enough: no token until the emailed code is confirmed
+        return await _start_login_challenge(user, store)
+    return SessionOut(token=create_token(user["id"]), user=_user_out(user), store=_store_out(store))
+
+
+def _mask_email(email: str) -> str:
+    name, _, domain = email.partition("@")
+    return f"{name[:2]}{'*' * max(len(name) - 2, 1)}@{domain}"
+
+
+async def _start_login_challenge(user: dict, store: dict) -> LoginChallengeOut:
+    now = datetime.now(timezone.utc)
+    recent = await db.login_challenges.find({"user_id": user["id"]}).sort([("created_at", DESCENDING)]).limit(10).to_list(10)
+    window = [c for c in recent if now - _aware(c["created_at"]) < LOGIN_CODE_SEND_WINDOW]
+    if len(window) >= LOGIN_CODE_SENDS_PER_WINDOW:
+        raise HTTPException(status_code=429, detail="Terlalu banyak permintaan kode. Coba lagi dalam beberapa menit.")
+    if not email_configured():
+        raise HTTPException(status_code=503, detail="Pengiriman email belum dikonfigurasi di server. Hubungi admin.")
+
+    challenge_id = secrets.token_urlsafe(32)
+    code = new_login_code()
+    await db.login_challenges.insert_one({
+        "id": challenge_id,
+        "store_id": store["id"],
+        "user_id": user["id"],
+        "code_hash": hash_login_code(challenge_id, code),
+        "attempts": 0,
+        "created_at": now,
+    })
+    sent = await send_email(
+        to=user["email"],
+        subject=f"Kode verifikasi login {store.get('name', 'KasirKu')}",
+        html=login_code_html(store.get("name", "toko Anda"), user.get("name", ""), code),
+    )
+    if not sent:
+        await db.login_challenges.delete_one({"id": challenge_id})
+        raise HTTPException(status_code=503, detail="Gagal mengirim kode ke email. Coba lagi sebentar lagi.")
+    return LoginChallengeOut(
+        challenge_id=challenge_id,
+        email_hint=_mask_email(user["email"]),
+        expires_in=int(LOGIN_CODE_TTL.total_seconds()),
+    )
+
+
+@db.transactional
+async def _consume_login_challenge(challenge_id: str, code: str) -> tuple[str, Optional[dict], int]:
+    """Check a code under a row lock so concurrent guesses cannot exceed the attempt cap.
+    Returns (status, challenge, attempts_left); never raises, so the attempt counter always commits."""
+    if not await db.login_challenges.lock_one({"id": challenge_id}):
+        return "gone", None, 0
+    challenge = await db.login_challenges.find_one({"id": challenge_id})
+    if not challenge or datetime.now(timezone.utc) - _aware(challenge["created_at"]) > LOGIN_CODE_TTL:
+        await db.login_challenges.delete_one({"id": challenge_id})
+        return "gone", None, 0
+
+    attempts = int(challenge.get("attempts", 0)) + 1
+    if hmac.compare_digest(challenge["code_hash"], hash_login_code(challenge_id, code)):
+        await db.login_challenges.delete_one({"id": challenge_id})  # single use
+        return "ok", challenge, 0
+    if attempts >= LOGIN_CODE_MAX_ATTEMPTS:
+        await db.login_challenges.delete_one({"id": challenge_id})
+        return "locked", None, 0
+    await db.login_challenges.update_one({"id": challenge_id}, {"$set": {"attempts": attempts}})
+    return "wrong", None, LOGIN_CODE_MAX_ATTEMPTS - attempts
+
+
+@router.post("/login/verify", response_model=SessionOut)
+async def verify_login(input: VerifyLoginIn):
+    status, challenge, left = await _consume_login_challenge(input.challenge_id, input.code)
+    if status == "gone":
+        raise HTTPException(status_code=410, detail="Kode kedaluwarsa atau tidak valid. Silakan login ulang.")
+    if status == "locked":
+        raise HTTPException(status_code=429, detail="Terlalu banyak kode salah. Silakan login ulang untuk kode baru.")
+    if status == "wrong":
+        raise HTTPException(status_code=400, detail=f"Kode salah. Sisa percobaan: {left}.")
+
+    user = await db.users.find_one({"id": challenge["user_id"], "is_active": True})
+    store = await db.stores.find_one({"id": challenge["store_id"]})
+    if not user or not store:
+        raise HTTPException(status_code=410, detail="Kode kedaluwarsa atau tidak valid. Silakan login ulang.")
     return SessionOut(token=create_token(user["id"]), user=_user_out(user), store=_store_out(store))
 
 
@@ -385,6 +483,48 @@ async def update_store(input: StoreUpdateIn, principal: Principal = Depends(requ
         summary="Memperbarui profil toko (tercetak di struk)",
         entity_name=updates["name"],
         category="toko",
+    )
+    return _store_out(store)
+
+
+@router.patch("/store/security", response_model=Store)
+async def update_store_security(
+    input: StoreSecurityUpdateIn,
+    principal: Principal = Depends(require("user:manage")),
+):
+    """Owner toggle for emailed login codes. Needs the owner's password, and enabling is refused
+    unless email can actually be delivered — otherwise nobody could log in afterwards."""
+    me = await db.users.find_one({"id": principal.user_id, "store_id": principal.store_id})
+    if not me or not verify_password(input.current_password, me["password_hash"]):
+        raise HTTPException(status_code=403, detail="Password Anda salah.")
+
+    if input.login_verification_enabled:
+        if not email_configured():
+            raise HTTPException(status_code=409, detail="Pengiriman email belum dikonfigurasi di server (SMTP_*).")
+        sent = await send_email(
+            to=principal.email,
+            subject=f"Verifikasi login diaktifkan — {principal.store_name}",
+            html=(
+                "<main style='font-family:Arial,sans-serif;max-width:480px;margin:auto'>"
+                f"<h1 style='font-size:18px'>{escape(principal.store_name)}</h1>"
+                "<p>Verifikasi email saat login telah diaktifkan. Mulai sekarang setiap login ke toko ini "
+                "memerlukan kode 6 digit yang dikirim ke email akun.</p></main>"
+            ),
+        )
+        if not sent:
+            raise HTTPException(status_code=502, detail="Email tidak terkirim, verifikasi login tidak diaktifkan.")
+
+    store = await db.stores.find_one_and_update(
+        {"id": principal.store_id},
+        {"$set": {"login_verification_enabled": input.login_verification_enabled}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not store:
+        raise HTTPException(status_code=404, detail="Data toko tidak ditemukan")
+    state = "mengaktifkan" if input.login_verification_enabled else "menonaktifkan"
+    await log_activity(
+        principal, "store:security", summary=f"Owner {state} verifikasi email saat login",
+        entity_name=store.get("name", ""), category="toko",
     )
     return _store_out(store)
 

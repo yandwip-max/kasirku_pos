@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, KeyRound, Pencil, Store as StoreIcon } from "lucide-react";
+import { Copy, KeyRound, Pencil, ShieldCheck, Store as StoreIcon } from "lucide-react";
 import { apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
@@ -10,6 +10,7 @@ import type {
   CloneStoreResult,
   ResetPasswordPayload,
   Store,
+  StoreSecurityPayload,
   StoreUpdatePayload,
   User,
 } from "@/lib/types";
@@ -399,6 +400,94 @@ export function CloneStoreCard() {
             </Button>
             <Button onClick={submit} disabled={clone.isPending} data-testid="clone-store-save-btn">
               {clone.isPending ? "Membuat…" : "Buat Toko"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** Owner toggle: require an emailed 6-digit code at every login to this store. */
+export function LoginVerificationCard() {
+  const { store, refreshSession } = useAuth();
+  const enabled = store?.login_verification_enabled ?? false;
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+
+  const save = useMutation({
+    mutationFn: (payload: StoreSecurityPayload) => apiPatch<Store>("/auth/store/security", payload),
+    onSuccess: async (updated) => {
+      await refreshSession();
+      toast.success(
+        updated.login_verification_enabled ? "Verifikasi email saat login diaktifkan" : "Verifikasi email saat login dimatikan",
+      );
+      setOpen(false);
+      setPassword("");
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Gagal mengubah pengaturan keamanan")),
+  });
+
+  function submit() {
+    if (!password) {
+      toast.error("Masukkan password Anda untuk konfirmasi");
+      return;
+    }
+    save.mutate({ login_verification_enabled: !enabled, current_password: password });
+  }
+
+  return (
+    <>
+      <Card data-testid="login-verification-card">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-[#0284C7]">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-heading text-base font-bold">
+                Verifikasi Email saat Login {enabled ? "· Aktif" : "· Nonaktif"}
+              </p>
+              <p className="text-sm text-slate-500">
+                Setiap login ke toko ini (email &amp; password) harus memasukkan kode 6 digit yang dikirim ke email
+                akun. Berlaku untuk semua akun di toko ini.
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" data-testid="login-verification-toggle-btn" onClick={() => setOpen(true)}>
+            {enabled ? "Matikan" : "Aktifkan"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="login-verification-dialog">
+          <DialogHeader>
+            <DialogTitle>{enabled ? "Matikan verifikasi email?" : "Aktifkan verifikasi email?"}</DialogTitle>
+            <DialogDescription>
+              {enabled
+                ? "Login ke toko ini akan kembali hanya memakai password."
+                : "Pastikan email setiap akun aktif dan bisa dibuka — kode login dikirim ke sana. Kami akan mengirim email pemberitahuan ke akun Anda sebagai uji pengiriman."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Label htmlFor="security-password">Password Anda saat ini *</Label>
+            <Input
+              id="security-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !save.isPending && submit()}
+              data-testid="login-verification-password-input"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Batal
+            </Button>
+            <Button onClick={submit} disabled={save.isPending} data-testid="login-verification-save-btn">
+              {save.isPending ? "Menyimpan…" : enabled ? "Matikan" : "Aktifkan"}
             </Button>
           </DialogFooter>
         </DialogContent>

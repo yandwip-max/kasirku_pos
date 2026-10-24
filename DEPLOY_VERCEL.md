@@ -32,8 +32,19 @@ origin, so frontend requests continue to use `/api`.
 ## Scheduled Reports
 
 The weekly report is configured for Saturday at 14:30 UTC (21:30 WIB) in
-`vercel.json`. Vercel Hobby cron jobs can run weekly, but their invocation time
+`vercel.json` and is emailed to every store's Pemilik accounts. It only sends
+when `CRON_SECRET` and an email provider (`SMTP_*` or `EMERGENT_EMAIL_KEY`) are
+set. Vercel Hobby cron jobs can run weekly, but their invocation time
 is only precise to the hour; use Pro for minute-level timing.
+
+## Login Email Verification
+
+A Pemilik can switch on "Verifikasi Email saat Login" under Pengaturan Toko. After
+that, every email/password login to that store returns a 6-digit code emailed to
+the account (valid 10 minutes, single use, 5 attempts) and a session is issued only
+after `POST /api/auth/login/verify`. It needs the same `SMTP_*` settings as the
+reports and cannot be enabled while email delivery is not configured. Google
+sign-in is unchanged (Google already verifies the email).
 
 The daily store-closing dispatcher runs every minute in the existing
 `.emergent/crons.yml`, which Vercel does not use. Vercel Hobby does not allow

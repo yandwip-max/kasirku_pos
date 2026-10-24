@@ -88,6 +88,12 @@ CREATE TABLE IF NOT EXISTS backups (
     document JSONB NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS login_challenges (
+    id TEXT PRIMARY KEY,
+    store_id TEXT REFERENCES stores(id) ON DELETE CASCADE,
+    document JSONB NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS status_checks (
     id TEXT PRIMARY KEY,
     store_id TEXT,

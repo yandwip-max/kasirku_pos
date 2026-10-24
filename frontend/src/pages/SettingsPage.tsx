@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { apiGet, apiPatch } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import type { AttendanceRecord, Store, StoreSchedulePayload } from "@/lib/types";
-import { CloneStoreCard, StoreProfileCard } from "@/components/StoreSettings";
+import { CloneStoreCard, LoginVerificationCard, StoreProfileCard } from "@/components/StoreSettings";
 import AppShell from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -56,6 +56,7 @@ export default function SettingsPage() {
         </header>
 
         <StoreProfileCard />
+        <LoginVerificationCard />
         <CloneStoreCard />
 
         <Card>

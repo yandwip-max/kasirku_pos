@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Loader2, Lock, Store as StoreIcon } from "lucide-react";
-import { apiGet } from "@/lib/api";
+import { apiGet, ApiError } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
+import type { LoginChallenge } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -34,7 +35,7 @@ declare global {
 }
 
 export default function LoginPage() {
-  const { login, loginWithGoogle, register } = useAuth();
+  const { login, verifyLogin, loginWithGoogle, register } = useAuth();
   const navigate = useNavigate();
   const googleButtonRef = useRef<HTMLDivElement>(null);
   const googleLoginRef = useRef<(credential: string) => void>(() => undefined);
@@ -45,6 +46,9 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  // Second step for stores that require an emailed login code
+  const [challenge, setChallenge] = useState<LoginChallenge | null>(null);
+  const [code, setCode] = useState("");
   const [regForm, setRegForm] = useState({
     store_name: "",
     store_address: "",
@@ -128,7 +132,13 @@ export default function LoginPage() {
     }
     setBusy(true);
     try {
-      await login({ email: loginForm.email.trim(), password: loginForm.password });
+      const pending = await login({ email: loginForm.email.trim(), password: loginForm.password });
+      if (pending) {
+        setChallenge(pending);
+        setCode("");
+        toast.info(`Kode verifikasi dikirim ke ${pending.email_hint}`);
+        return;
+      }
       toast.success("Berhasil masuk");
       navigate("/", { replace: true });
     } catch (err) {
@@ -138,6 +148,37 @@ export default function LoginPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitCode() {
+    setError("");
+    if (!challenge || !/^\d{6}$/.test(code)) {
+      setError("Masukkan kode 6 digit dari email");
+      return;
+    }
+    setBusy(true);
+    try {
+      await verifyLogin(challenge.challenge_id, code);
+      toast.success("Berhasil masuk");
+      navigate("/", { replace: true });
+    } catch (err) {
+      const message = apiErrorMessage(err, "Verifikasi gagal. Coba lagi.");
+      setError(message);
+      toast.error(message);
+      // expired / locked codes cannot be retried — go back to the password step
+      if (err instanceof ApiError && (err.status === 410 || err.status === 429)) {
+        setChallenge(null);
+        setCode("");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function cancelCode() {
+    setChallenge(null);
+    setCode("");
+    setError("");
   }
 
   async function submitRegister() {
@@ -232,6 +273,47 @@ export default function LoginPage() {
                     {error}
                   </p>
                 )}
+                {challenge && (
+                  <div className="space-y-4" data-testid="login-code-step">
+                    <p className="text-sm text-slate-600">
+                      Kami mengirim kode 6 digit ke <span className="font-medium">{challenge.email_hint}</span>. Kode
+                      berlaku {Math.round(challenge.expires_in / 60)} menit.
+                    </p>
+                    <div className="grid gap-2">
+                      <Label htmlFor="login-code">Kode verifikasi</Label>
+                      <Input
+                        id="login-code"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        value={code}
+                        onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                        onKeyDown={(e) => e.key === "Enter" && !busy && void submitCode()}
+                        placeholder="123456"
+                        data-testid="login-code-input"
+                      />
+                    </div>
+                    <Button className="w-full" disabled={busy} onClick={() => void submitCode()} data-testid="login-code-submit-btn">
+                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                      Verifikasi &amp; Masuk
+                    </Button>
+                    <div className="flex justify-between text-sm">
+                      <button type="button" className="text-slate-500 underline" onClick={cancelCode}>
+                        Kembali
+                      </button>
+                      <button
+                        type="button"
+                        className="text-sky-700 underline disabled:opacity-50"
+                        disabled={busy}
+                        onClick={() => void submitLogin()}
+                        data-testid="login-code-resend-btn"
+                      >
+                        Kirim ulang kode
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className={challenge ? "hidden" : "space-y-4"}>
                 <div className="grid gap-2">
                   <Label htmlFor="login-email">Email</Label>
                   <Input
@@ -276,6 +358,7 @@ export default function LoginPage() {
                     <div ref={googleButtonRef} className="flex min-h-10 justify-center" />
                   </div>
                 )}
+                </div>
               </TabsContent>
 
               <TabsContent value="register" className="mt-5 space-y-4">

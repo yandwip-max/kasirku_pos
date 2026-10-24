@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { apiGet, apiPost, setToken, setUnauthorizedHandler, getToken, OfflineError } from "@/lib/api";
-import type { LoginPayload, MeOut, RegisterPayload, SessionOut, Store, User } from "@/lib/types";
+import type { LoginChallenge, LoginPayload, MeOut, RegisterPayload, SessionOut, Store, User } from "@/lib/types";
 
 const SESSION_CACHE_KEY = "kasirku.session";
 
@@ -13,7 +13,9 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (payload: LoginPayload) => Promise<void>;
+  /** Resolves to a challenge (instead of signing in) when the store requires an emailed code. */
+  login: (payload: LoginPayload) => Promise<LoginChallenge | null>;
+  verifyLogin: (challengeId: string, code: string) => Promise<void>;
   loginWithGoogle: (credential: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
@@ -104,8 +106,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (payload: LoginPayload) => {
-      applySession(await apiPost<SessionOut>("/auth/login", payload));
+    async (payload: LoginPayload): Promise<LoginChallenge | null> => {
+      const result = await apiPost<SessionOut | LoginChallenge>("/auth/login", payload);
+      if ("verification_required" in result) return result;
+      applySession(result);
+      return null;
+    },
+    [applySession],
+  );
+
+  const verifyLogin = useCallback(
+    async (challengeId: string, code: string) => {
+      applySession(await apiPost<SessionOut>("/auth/login/verify", { challenge_id: challengeId, code }));
     },
     [applySession],
   );
@@ -139,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       ...state,
       login,
+      verifyLogin,
       loginWithGoogle,
       register,
       logout: clearSession,
@@ -146,7 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       can: (action: string) => state.permissions.includes(action),
       isOwner: state.user?.role === "pemilik",
     }),
-    [state, login, loginWithGoogle, register, clearSession, refreshSession],
+    [state, login, verifyLogin, loginWithGoogle, register, clearSession, refreshSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

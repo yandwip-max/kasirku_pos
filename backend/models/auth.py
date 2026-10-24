@@ -25,6 +25,8 @@ class Store(BaseModel):
     closing_time: str = "21:00"
     timezone: str = "Asia/Jakarta"
     daily_report_enabled: bool = True
+    # owner opt-in: every login to this store needs a 6-digit code sent to the account's email
+    login_verification_enabled: bool = False
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -126,6 +128,26 @@ class StoreScheduleUpdateIn(BaseModel):
     closing_time: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     timezone: str = Field(default="Asia/Jakarta", min_length=1, max_length=64)
     daily_report_enabled: bool = True
+
+
+class StoreSecurityUpdateIn(BaseModel):
+    login_verification_enabled: bool
+    # the owner re-enters their own password; weakening or changing security needs proof
+    current_password: str = Field(min_length=1, max_length=72)
+
+
+class LoginChallengeOut(BaseModel):
+    """Returned instead of a session when the store requires an emailed login code."""
+
+    verification_required: Literal[True] = True
+    challenge_id: str
+    email_hint: str
+    expires_in: int
+
+
+class VerifyLoginIn(BaseModel):
+    challenge_id: str = Field(min_length=1, max_length=128)
+    code: str = Field(pattern=r"^\d{6}$")
 
 
 class SessionOut(BaseModel):

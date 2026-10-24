@@ -20,7 +20,21 @@ export interface Store {
   closing_time: string;
   timezone: string;
   daily_report_enabled: boolean;
+  login_verification_enabled: boolean;
   created_at: string;
+}
+
+export interface StoreSecurityPayload {
+  login_verification_enabled: boolean;
+  current_password: string;
+}
+
+/** /auth/login answers with this instead of a session when the store requires an emailed code. */
+export interface LoginChallenge {
+  verification_required: true;
+  challenge_id: string;
+  email_hint: string;
+  expires_in: number;
 }
 
 export interface StoreSchedulePayload {

@@ -28,6 +28,7 @@ ActivityAction = Literal[
     "store:update",
     "store:clone",
     "store:clone_denied",
+    "store:security",
 ]
 
 # Coarse buckets the UI filters on ("harga", "stok", "password", …)
