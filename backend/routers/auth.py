@@ -39,6 +39,8 @@ from lib.scoped import ScopedRepo
 from models.category import Category
 from models.product import Product
 from models.auth import (
+    DeleteStoreIn,
+    DeleteStoreOut,
     CloneStoreIn,
     CloneStoreOut,
     CreateUserIn,
@@ -577,3 +579,54 @@ async def deactivate_user(user_id: str, principal: Principal = Depends(require("
         category="akun",
     )
     return _user_out({**user, "is_active": target_active})
+
+
+@router.post("/store/delete", response_model=DeleteStoreOut)
+@router.delete("/store", response_model=DeleteStoreOut)
+@db.transactional
+async def delete_store(
+    input: DeleteStoreIn,
+    principal: Principal = Depends(require("user:manage")),
+):
+    """Hapus toko dan seluruh data yang terkait secara permanen.
+    Hanya bisa dilakukan oleh Pemilik toko ('pemilik').
+    Memerlukan konfirmasi nama toko dan password akun pemilik."""
+    if principal.role != "pemilik":
+        raise HTTPException(status_code=403, detail="Hanya pemilik toko yang dapat menghapus toko")
+
+    if input.confirmation_name.strip() != principal.store_name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Konfirmasi nama toko tidak cocok. Harap ketik persis: '{principal.store_name}'",
+        )
+
+    me = await db.users.find_one({"id": principal.user_id, "store_id": principal.store_id})
+    if not me or not verify_password(input.password, me["password_hash"]):
+        raise HTTPException(
+            status_code=403,
+            detail="Password Anda salah. Konfirmasi password diperlukan untuk menghapus toko.",
+        )
+
+    store_id = principal.store_id
+    store_name = principal.store_name
+
+    await db.transaction_items.delete_many({"store_id": store_id})
+    await db.transactions.delete_many({"store_id": store_id})
+    await db.product_units.delete_many({"store_id": store_id})
+    await db.products.delete_many({"store_id": store_id})
+    await db.categories.delete_many({"store_id": store_id})
+    await db.attendance.delete_many({"store_id": store_id})
+    await db.daily_report_runs.delete_many({"store_id": store_id})
+    await db.email_tests.delete_many({"store_id": store_id})
+    await db.cron_runs.delete_many({"store_id": store_id})
+    await db.backups.delete_many({"store_id": store_id})
+    await db.login_challenges.delete_many({"store_id": store_id})
+    await db.activity_logs.delete_many({"store_id": store_id})
+    await db.status_checks.delete_many({"store_id": store_id})
+    await db.users.delete_many({"store_id": store_id})
+    await db.stores.delete_one({"id": store_id})
+
+    return DeleteStoreOut(
+        success=True,
+        message=f"Toko '{store_name}' dan seluruh data terkait berhasil dihapus.",
+    )

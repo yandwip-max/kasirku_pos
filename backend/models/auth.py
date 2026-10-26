@@ -162,3 +162,12 @@ class MeOut(BaseModel):
     user: UserOut
     store: Store
     permissions: list[str]
+
+class DeleteStoreIn(BaseModel):
+    password: str = Field(min_length=1, max_length=72)
+    confirmation_name: str = Field(min_length=1, max_length=80)
+
+
+class DeleteStoreOut(BaseModel):
+    success: bool = True
+    message: str

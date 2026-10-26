@@ -24,6 +24,16 @@ export interface Store {
   created_at: string;
 }
 
+export interface DeleteStorePayload {
+  confirmation_name: string;
+  password: string;
+}
+
+export interface DeleteStoreResult {
+  success: boolean;
+  message: string;
+}
+
 export interface StoreSecurityPayload {
   login_verification_enabled: boolean;
   current_password: string;

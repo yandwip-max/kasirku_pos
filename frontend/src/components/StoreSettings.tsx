@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Copy, KeyRound, Pencil, ShieldCheck, Store as StoreIcon } from "lucide-react";
+import { AlertTriangle, Copy, KeyRound, Pencil, ShieldCheck, Store as StoreIcon, Trash2 } from "lucide-react";
 import { apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import type {
   CloneStorePayload,
+  DeleteStorePayload,
+  DeleteStoreResult,
   CloneStoreResult,
   ResetPasswordPayload,
   Store,
@@ -488,6 +490,150 @@ export function LoginVerificationCard() {
             </Button>
             <Button onClick={submit} disabled={save.isPending} data-testid="login-verification-save-btn">
               {save.isPending ? "Menyimpan…" : enabled ? "Matikan" : "Aktifkan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/** Danger zone: owner can permanently delete their store after typing the exact store name and password. */
+export function DeleteStoreCard() {
+  const { store, isOwner, logout } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [confirmationName, setConfirmationName] = useState("");
+  const [password, setPassword] = useState("");
+
+  if (!isOwner) return null;
+
+  const deleteMutation = useMutation({
+    mutationFn: (payload: DeleteStorePayload) =>
+      apiPost<DeleteStoreResult>("/auth/store/delete", payload),
+    onSuccess: (res) => {
+      toast.success(res.message || "Toko berhasil dihapus");
+      setOpen(false);
+      logout();
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, "Gagal menghapus toko")),
+  });
+
+  const isConfirmed = confirmationName.trim() === (store?.name ?? "").trim();
+  const canSubmit = isConfirmed && password.length > 0 && !deleteMutation.isPending;
+
+  function submit() {
+    if (!isConfirmed) {
+      toast.error("Nama toko yang diketik tidak cocok");
+      return;
+    }
+    if (!password) {
+      toast.error("Masukkan password Anda untuk konfirmasi");
+      return;
+    }
+    deleteMutation.mutate({
+      confirmation_name: confirmationName,
+      password,
+    });
+  }
+
+  return (
+    <>
+      <Card className="border-rose-200 bg-rose-50/20" data-testid="delete-store-card">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-heading text-base font-bold text-rose-900">
+                Hapus Toko
+              </p>
+              <p className="text-sm text-slate-500">
+                Hapus toko ini beserta seluruh data produk, transaksi, riwayat stok, absensi, dan akun staf secara permanen.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="destructive"
+            data-testid="delete-store-open-btn"
+            onClick={() => {
+              setConfirmationName("");
+              setPassword("");
+              setOpen(true);
+            }}
+          >
+            Hapus Toko
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md border-rose-200" data-testid="delete-store-dialog">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-700">
+              <AlertTriangle className="h-5 w-5 text-rose-600" />
+              Hapus Toko Secara Permanen?
+            </DialogTitle>
+            <DialogDescription className="text-slate-600">
+              Tindakan ini <span className="font-bold text-rose-700">tidak dapat dibatalkan</span>. Semua data toko
+              <span className="font-semibold text-slate-900"> &ldquo;{store?.name}&rdquo;</span> termasuk katalog produk, struk penjualan,
+              laporan keuangan, dan absensi akan dihapus selamanya.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 py-2">
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800 space-y-1">
+              <p className="font-semibold">Peringatan Keamanan:</p>
+              <p>
+                Ketik nama toko persis seperti di bawah untuk mengonfirmasi penghapusan:
+              </p>
+              <p className="font-mono font-bold select-all text-slate-900 bg-white/70 px-2 py-1 rounded border border-rose-200">
+                {store?.name}
+              </p>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="delete-store-confirm-name">Konfirmasi Nama Toko *</Label>
+              <Input
+                id="delete-store-confirm-name"
+                placeholder={store?.name}
+                value={confirmationName}
+                onChange={(e) => setConfirmationName(e.target.value)}
+                autoComplete="off"
+                data-testid="delete-store-confirm-name-input"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="delete-store-password">Password Anda (Pemilik Toko) *</Label>
+              <Input
+                id="delete-store-password"
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && canSubmit && submit()}
+                data-testid="delete-store-password-input"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={deleteMutation.isPending}
+            >
+              Batal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={submit}
+              disabled={!canSubmit}
+              data-testid="delete-store-submit-btn"
+            >
+              {deleteMutation.isPending ? "Menghapus..." : "Ya, Hapus Toko Permanen"}
             </Button>
           </DialogFooter>
         </DialogContent>
