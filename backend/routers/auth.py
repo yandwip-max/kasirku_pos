@@ -200,6 +200,8 @@ async def _create_cloned_store(input: CloneStoreIn, principal: Principal) -> Clo
     for doc in await source.find("products", {}).to_list(100000):
         copy = Product.model_validate({**doc, "id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc)})
         copy.stock_qty = 0  # physical stock belongs to each shop; only the catalogue is shared
+        copy.supplier_id = ""  # suppliers are per-store and are not cloned
+        copy.supplier_name = ""
         products.append(copy.model_dump(exclude={"store_id"}))
     if products:
         await target.insert_many("products", products)
@@ -615,6 +617,7 @@ async def delete_store(
     await db.product_units.delete_many({"store_id": store_id})
     await db.products.delete_many({"store_id": store_id})
     await db.categories.delete_many({"store_id": store_id})
+    await db.suppliers.delete_many({"store_id": store_id})
     await db.attendance.delete_many({"store_id": store_id})
     await db.daily_report_runs.delete_many({"store_id": store_id})
     await db.email_tests.delete_many({"store_id": store_id})

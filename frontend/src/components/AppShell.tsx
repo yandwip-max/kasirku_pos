@@ -6,6 +6,7 @@ import {
   ClipboardList,
   CloudOff,
   History,
+  Landmark,
   LogOut,
   Maximize,
   Minimize,
@@ -33,6 +34,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { to: "/", label: "Kasir (POS)", icon: ShoppingCart, testid: "nav-pos-link", action: "transaction:create" },
   { to: "/products", label: "Stok & Produk", icon: Package, testid: "nav-products-link", action: "product:write" },
+  { to: "/assets", label: "Aset", icon: Landmark, testid: "nav-assets-link", action: "cost:read" },
   { to: "/transactions", label: "Riwayat", icon: History, testid: "nav-transactions-link", action: "transaction:read" },
   { to: "/reports/daily", label: "Laporan Harian", icon: CalendarDays, testid: "nav-daily-report-link", action: "report:read" },
   { to: "/reports", label: "Ringkasan", icon: BarChart3, testid: "nav-reports-link", action: "report:read" },

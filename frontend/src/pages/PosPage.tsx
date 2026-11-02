@@ -125,6 +125,36 @@ export default function PosPage() {
   });
   const products = useMemo(() => productsQuery.data ?? [], [productsQuery.data]);
 
+  // Unfiltered list, only used to total the pcs shown on each category/folder chip.
+  const allProductsQuery = useQuery({
+    queryKey: ["products", "pos-stock-summary"],
+    queryFn: () => apiGet<Product[]>("/products"),
+  });
+  const stockSummary = useMemo(() => {
+    const byType: Record<string, { pcs: number; items: number }> = { all: { pcs: 0, items: 0 } };
+    const byFolder: Record<string, { pcs: number; items: number }> = {};
+    const typeKey: Record<string, string> = {
+      handphone: "handphone",
+      aksesoris: "accessories",
+      voucher: "voucher",
+      lainnya: "lainnya",
+      non_fisik: "non_fisik",
+    };
+    for (const p of allProductsQuery.data ?? []) {
+      const pcs = p.type === "non_fisik" ? 0 : p.stock;
+      const folderKey = p.category.trim().toLowerCase();
+      for (const bucket of [byType.all, (byType[typeKey[p.type]] ??= { pcs: 0, items: 0 }), (byFolder[folderKey] ??= { pcs: 0, items: 0 })]) {
+        bucket.pcs += pcs;
+        bucket.items += 1;
+      }
+    }
+    return { byType, byFolder };
+  }, [allProductsQuery.data]);
+  const selectedSummary = folder
+    ? stockSummary.byFolder[folder.trim().toLowerCase()]
+    : stockSummary.byType[category];
+  const selectedLabel = folder || CATEGORIES.find((c) => c.id === category)?.label;
+
   // F2 focuses the search box, cashier-style
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -346,6 +376,9 @@ export default function PosPage() {
                   )}
                 >
                   {c.label}
+                  {c.id !== "non_fisik" && (
+                    <span className="ml-1.5 text-xs opacity-75">({stockSummary.byType[c.id]?.pcs ?? 0} pcs)</span>
+                  )}
                 </button>
               ))}
               {/* shop-defined folders (CCTV, Sparepart, Parfum, …) */}
@@ -366,9 +399,15 @@ export default function PosPage() {
                   )}
                 >
                   {f.name}
+                  <span className="ml-1.5 text-xs opacity-75">({stockSummary.byFolder[f.name.trim().toLowerCase()]?.pcs ?? 0} pcs)</span>
                 </button>
               ))}
             </div>
+            {selectedSummary && (
+              <p className="mt-2 text-xs text-slate-500" data-testid="pos-category-stock-summary">
+                {selectedLabel}: <strong className="text-slate-700">{selectedSummary.pcs} pcs</strong> dari {selectedSummary.items} produk
+              </p>
+            )}
           </div>
           <ProductGrid
             products={products}

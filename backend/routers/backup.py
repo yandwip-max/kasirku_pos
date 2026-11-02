@@ -16,7 +16,7 @@ from lib.auth import Principal, require
 from lib.dates import today_iso
 from lib.db import db
 from lib.scoped import ScopedRepo, scoped_repo
-from routers.cron import WIB, _recap_html, _store_recap
+from routers.cron import REPORT_EMAILS_ENABLED, WIB, _recap_html, _store_recap
 from lib.email import email_configured, send_email
 
 router = APIRouter(prefix="/backup")
@@ -123,6 +123,8 @@ async def send_report_now(principal: Principal = Depends(require("user:manage"))
     The recipient is always the caller's stored email and the body is the same
     server-side template the cron uses; nothing here is caller-supplied.
     """
+    if not REPORT_EMAILS_ENABLED:
+        raise HTTPException(status_code=410, detail="Pengiriman laporan ke email dinonaktifkan")
     user = await db.users.find_one({"id": principal.user_id, "store_id": principal.store_id})
     store = await db.stores.find_one({"id": principal.store_id})
     if not user or not store or not user.get("email"):

@@ -10,7 +10,6 @@ import { CloneStoreCard, DeleteStoreCard, LoginVerificationCard, StoreProfileCar
 import AppShell from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -33,7 +32,7 @@ export default function SettingsPage() {
     mutationFn: (payload: StoreSchedulePayload) => apiPatch<Store>("/auth/store/schedule", payload),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["attendance"] });
-      toast.success("Jam operasional dan laporan harian tersimpan");
+      toast.success("Jam operasional tersimpan");
       setHours({
         opening_time: updated.opening_time,
         closing_time: updated.closing_time,
@@ -64,8 +63,8 @@ export default function SettingsPage() {
             <div className="flex items-start gap-3">
               <Clock3 className="mt-0.5 h-5 w-5 text-sky-700" />
               <div>
-                <h2 className="font-heading text-base font-bold">Jam Operasional &amp; Laporan Harian</h2>
-                <p className="text-sm text-slate-500">Jam ini dipakai untuk tanggal absensi dan waktu pengiriman ringkasan transaksi.</p>
+                <h2 className="font-heading text-base font-bold">                Jam Operasional</h2>
+                                <p className="text-sm text-slate-500">Jam ini dipakai untuk tanggal absensi.</p>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -87,10 +86,6 @@ export default function SettingsPage() {
                 </select>
               </div>
             </div>
-            <Label className="flex items-center gap-2 text-sm font-normal">
-              <Checkbox checked={hours.daily_report_enabled} onCheckedChange={(checked) => setHours((value) => ({ ...value, daily_report_enabled: checked === true }))} data-testid="daily-email-enabled-checkbox" />
-              Kirim ringkasan transaksi ke email pemilik setiap hari setelah toko tutup
-            </Label>
             <div>
               <Button onClick={() => saveHours.mutate(hours)} disabled={saveHours.isPending} data-testid="store-schedule-save-btn">
                 {saveHours.isPending ? "Menyimpan…" : "Simpan Jam Operasional"}

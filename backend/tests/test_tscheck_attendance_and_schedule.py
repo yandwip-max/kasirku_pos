@@ -134,6 +134,7 @@ async def test_daily_closing_report_sends_once_per_owner_and_local_day(monkeypat
         return "fake-provider-id"
 
     monkeypatch.setattr(cron_router, "send_email", fake_send_email)
+    monkeypatch.setattr(cron_router, "REPORT_EMAILS_ENABLED", True)
     try:
         await cron_router.run_daily_store_reports()
         await cron_router.run_daily_store_reports()

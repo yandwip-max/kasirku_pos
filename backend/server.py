@@ -25,6 +25,7 @@ from routers.audit import router as audit_router
 from routers.backup import router as backup_router
 from routers.cron import router as cron_router
 from routers.categories import router as categories_router
+from routers.suppliers import router as suppliers_router
 from routers.ai import router as ai_router
 from routers.attendance import router as attendance_router
 
@@ -79,6 +80,7 @@ api_router.include_router(audit_router)
 api_router.include_router(backup_router)
 api_router.include_router(cron_router)
 api_router.include_router(categories_router)
+api_router.include_router(suppliers_router)
 api_router.include_router(ai_router)
 api_router.include_router(attendance_router)
 

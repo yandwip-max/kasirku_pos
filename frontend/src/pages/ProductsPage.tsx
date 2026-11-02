@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Barcode, FolderTree, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Barcode, FolderTree, Pencil, Plus, Search, Trash2, Truck } from "lucide-react";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import type { Product, ProductPayload, ProductType, ProductUnit } from "@/lib/types";
 import { formatDateTime, formatRupiah, formatThousands, parseRupiah } from "@/lib/format";
 import AppShell from "@/components/AppShell";
 import CategoryManager, { useCategories } from "@/components/CategoryManager";
+import SupplierManager, { useSuppliers } from "@/components/SupplierManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -103,6 +104,7 @@ interface FormState {
   stock_qty: string;
   min_stock: string;
   track_imei: boolean;
+  supplier_id: string;
 }
 
 function emptyForm(): FormState {
@@ -122,6 +124,7 @@ function emptyForm(): FormState {
     stock_qty: "0",
     min_stock: "5",
     track_imei: false,
+    supplier_id: "",
   };
 }
 
@@ -142,6 +145,7 @@ function productToForm(p: Product): FormState {
     stock_qty: String(p.stock_qty),
     min_stock: String(p.min_stock),
     track_imei: p.track_imei ?? false,
+    supplier_id: p.supplier_id ?? "",
   };
 }
 
@@ -157,6 +161,7 @@ function ProductFormDialog({
   const [form, setForm] = useState<FormState>(product ? productToForm(product) : emptyForm());
   const queryClient = useQueryClient();
   const folderNames = (useCategories().data ?? []).map((c) => c.name);
+  const suppliers = useSuppliers().data ?? [];
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   useEffect(() => {
@@ -196,6 +201,7 @@ function ProductFormDialog({
       stock_qty: form.type === "handphone" || form.type === "non_fisik" || form.track_imei ? 0 : parseRupiah(form.stock_qty),
       min_stock: parseRupiah(form.min_stock) || 5,
       track_imei: form.track_imei,
+      supplier_id: form.supplier_id,
     });
   }
 
@@ -435,6 +441,27 @@ function ProductFormDialog({
                 />
               </div>
             </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="product-supplier">Supplier</Label>
+            <select
+              id="product-supplier"
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm"
+              value={form.supplier_id}
+              onChange={(e) => set("supplier_id", e.target.value)}
+              data-testid="product-supplier-select"
+            >
+              <option value="">— Tanpa supplier —</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            {suppliers.length === 0 && (
+              <p className="text-xs text-slate-500">Belum ada supplier. Tambahkan lewat tombol “Kelola Supplier”.</p>
+            )}
           </div>
 
           <div className={form.type === "non_fisik" && form.service_category === "ewallet" ? "grid gap-3" : "grid grid-cols-2 gap-3"}>
@@ -832,6 +859,7 @@ export default function ProductsPage() {
   const [folderFilter, setFolderFilter] = useState("");
   const folders = useCategories().data ?? [];
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [supplierManagerOpen, setSupplierManagerOpen] = useState(false);
   const [lowStock, setLowStock] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [formProduct, setFormProduct] = useState<Product | null>(null);
@@ -889,6 +917,14 @@ export default function ProductsPage() {
             onClick={() => setCategoryManagerOpen(true)}
           >
             <FolderTree className="h-4 w-4" /> Kelola Folder
+          </Button>
+          <Button
+            variant="outline"
+            data-testid="manage-suppliers-btn"
+            className="active:scale-[0.98] transition-transform duration-100"
+            onClick={() => setSupplierManagerOpen(true)}
+          >
+            <Truck className="h-4 w-4" /> Kelola Supplier
           </Button>
         </div>
 
@@ -993,7 +1029,7 @@ export default function ProductsPage() {
                       <TableCell>
                         <p className="font-medium">{p.name}</p>
                         <p className="text-xs text-slate-500">
-                          {p.type === "non_fisik" ? `${p.provider} · ${p.service_category === "ewallet" ? "E-Wallet" : p.service_category === "pln" ? "Listrik PLN" : "Pulsa"}` : p.brand || "-"} · {p.sku || "tanpa SKU"}
+                          {p.type === "non_fisik" ? `${p.provider} · ${p.service_category === "ewallet" ? "E-Wallet" : p.service_category === "pln" ? "Listrik PLN" : "Pulsa"}` : p.brand || "-"} · {p.sku || "tanpa SKU"}{p.supplier_name ? ` · Supplier: ${p.supplier_name}` : ""}
                         </p>
                       </TableCell>
                       <TableCell>
@@ -1079,6 +1115,7 @@ export default function ProductsPage() {
 
       <ProductFormDialog key={formProduct?.id ?? "new"} open={formOpen} onOpenChange={setFormOpen} product={formProduct} />
       <CategoryManager open={categoryManagerOpen} onOpenChange={setCategoryManagerOpen} />
+      <SupplierManager open={supplierManagerOpen} onOpenChange={setSupplierManagerOpen} />
       <UnitManagerDialog
         key={unitProduct?.id ?? "none"}
         product={unitProduct}

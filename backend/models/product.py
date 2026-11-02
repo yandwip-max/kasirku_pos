@@ -57,6 +57,8 @@ class Product(BaseModel):
     # When True, ANY product type is stocked as serialized units (IMEI/barcode per piece).
     # Handphones always behave as if track_imei=True regardless of this flag.
     track_imei: bool = False
+    supplier_id: str = ""
+    supplier_name: str = ""
     created_at: datetime = Field(default_factory=_now)
 
 
@@ -82,6 +84,7 @@ class ProductCreate(BaseModel):
     stock_qty: int = 0
     min_stock: int = 5
     track_imei: bool = False
+    supplier_id: str = ""
 
     @field_validator(*MONEY_FIELDS, mode="before")
     @classmethod
@@ -105,6 +108,7 @@ class ProductUpdate(BaseModel):
     min_stock: Optional[int] = None
     is_active: Optional[bool] = None
     track_imei: Optional[bool] = None
+    supplier_id: Optional[str] = None
 
     @field_validator(*MONEY_FIELDS, mode="before")
     @classmethod

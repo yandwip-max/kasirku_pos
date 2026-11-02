@@ -35,6 +35,15 @@ def _aware(dt):
     return dt if dt is None or dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
+async def _supplier_name(repo: ScopedRepo, supplier_id: str) -> str:
+    if not supplier_id:
+        return ""
+    supplier = await repo.find_one("suppliers", {"id": supplier_id})
+    if not supplier:
+        raise HTTPException(status_code=422, detail="Supplier tidak ditemukan")
+    return supplier["name"]
+
+
 def _unit_out(doc: dict, principal: Principal) -> ProductUnit:
     return ProductUnit(
         **{
@@ -111,6 +120,58 @@ async def list_products(
             continue
         out.append(_product_out(doc, principal, stock))
     return out
+
+
+@router.get("/assets")
+async def asset_summary(
+    principal: Principal = Depends(require("cost:read")),
+    repo: ScopedRepo = Depends(scoped_repo),
+):
+    """Total inventory value (modal & potential retail) across every physical product."""
+    products = await repo.find("products", {"type": {"$ne": "non_fisik"}}).sort("name", 1).to_list(100000)
+    units = await repo.find("product_units", {"status": "in_stock"}).to_list(1000000)
+    by_product: dict[str, list[dict]] = {}
+    for unit in units:
+        by_product.setdefault(unit["product_id"], []).append(unit)
+
+    rows = []
+    by_category: dict[str, dict] = {}
+    for doc in products:
+        cost, sell = doc.get("cost_price", 0) or 0, doc.get("sell_price", 0) or 0
+        product_units = by_product.get(doc["id"], [])
+        # a unit with its own price overrides the product price; 0 falls back to it
+        unit_cost = sum(u.get("cost_price") or cost for u in product_units)
+        unit_sell = sum(u.get("sell_price") or sell for u in product_units)
+        loose = doc.get("stock_qty", 0) if (doc.get("type") == "voucher" or not (
+            doc.get("type") == "handphone" or doc.get("track_imei", False))) else 0
+        stock = loose + len(product_units)
+        row = {
+            "id": doc["id"],
+            "name": doc["name"],
+            "category": doc.get("category", "Lainnya"),
+            "supplier_name": doc.get("supplier_name", ""),
+            "stock": stock,
+            "cost_price": cost,
+            "asset_value": loose * cost + unit_cost,
+            "retail_value": loose * sell + unit_sell,
+        }
+        rows.append(row)
+        group = by_category.setdefault(
+            row["category"], {"category": row["category"], "product_count": 0, "stock": 0, "asset_value": 0, "retail_value": 0}
+        )
+        group["product_count"] += 1
+        group["stock"] += stock
+        group["asset_value"] += row["asset_value"]
+        group["retail_value"] += row["retail_value"]
+
+    return {
+        "total_asset_value": sum(r["asset_value"] for r in rows),
+        "total_retail_value": sum(r["retail_value"] for r in rows),
+        "total_stock": sum(r["stock"] for r in rows),
+        "product_count": len(rows),
+        "by_category": sorted(by_category.values(), key=lambda g: -g["asset_value"]),
+        "products": sorted(rows, key=lambda r: -r["asset_value"]),
+    }
 
 
 @router.get("/scan/{code}", response_model=ProductScanResult)
@@ -198,7 +259,10 @@ async def create_product(
         or await repo.find_one("product_units", {"barcode": input.barcode})
     ):
         raise HTTPException(status_code=409, detail="Barcode sudah digunakan")
-    doc = Product(**{**input.model_dump(), "name": input.name.strip()}, store_id=principal.store_id)
+    doc = Product(
+        **{**input.model_dump(), "name": input.name.strip(), "supplier_name": await _supplier_name(repo, input.supplier_id)},
+        store_id=principal.store_id,
+    )
     await repo.insert_one("products", doc.model_dump(exclude={"store_id"}))
     await log_activity(
         principal,
@@ -224,6 +288,9 @@ async def update_product(
         raise HTTPException(status_code=400, detail="Tidak ada perubahan")
     updates.pop("type", None)  # type is immutable once created
     updates.pop("store_id", None)  # never reassign a product to another store
+    if "supplier_id" in updates:
+        updates["supplier_id"] = updates["supplier_id"] or ""
+        updates["supplier_name"] = await _supplier_name(repo, updates["supplier_id"])
     if updates.get("name"):
         name = str(updates["name"]).strip()
         clash = await repo.find_one(

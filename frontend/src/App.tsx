@@ -10,6 +10,7 @@ import UsersPage from "@/pages/UsersPage";
 import ActivityLogPage from "@/pages/ActivityLogPage";
 import SettingsPage from "@/pages/SettingsPage";
 import AttendanceReportPage from "@/pages/AttendanceReportPage";
+import AssetsPage from "@/pages/AssetsPage";
 import { Toaster } from "@/components/ui/sonner";
 
 // One <Route> per page in src/pages; BrowserRouter already wraps this in main.tsx.
@@ -44,6 +45,14 @@ export default function App() {
         element={
           <RequirePermission action="product:write">
             <ProductsPage />
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="/assets"
+        element={
+          <RequirePermission action="cost:read">
+            <AssetsPage />
           </RequirePermission>
         }
       />

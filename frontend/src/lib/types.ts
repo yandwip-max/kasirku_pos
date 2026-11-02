@@ -173,6 +173,8 @@ export interface Product {
    track_imei: boolean;
    /** computed: in-stock unit count for handphones, stock_qty for accessories */
    stock: number;
+   supplier_id?: string;
+   supplier_name?: string;
  }
 
 export interface ProductUnit {
@@ -340,6 +342,50 @@ export interface ProductPayload {
   stock_qty: number;
   min_stock: number;
   track_imei: boolean;
+  supplier_id?: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  phone: string;
+  address: string;
+  product_count: number;
+  created_at: string;
+}
+
+export interface SupplierPayload {
+  name: string;
+  phone: string;
+  address: string;
+}
+
+export interface AssetCategoryRow {
+  category: string;
+  product_count: number;
+  stock: number;
+  asset_value: number;
+  retail_value: number;
+}
+
+export interface AssetProductRow {
+  id: string;
+  name: string;
+  category: string;
+  supplier_name: string;
+  stock: number;
+  cost_price: number;
+  asset_value: number;
+  retail_value: number;
+}
+
+export interface AssetSummary {
+  total_asset_value: number;
+  total_retail_value: number;
+  total_stock: number;
+  product_count: number;
+  by_category: AssetCategoryRow[];
+  products: AssetProductRow[];
 }
 
 export interface UnitPayload {

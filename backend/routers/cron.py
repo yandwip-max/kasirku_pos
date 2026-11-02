@@ -21,6 +21,9 @@ router = APIRouter(prefix="/cron")
 logger = logging.getLogger(__name__)
 WIB = ZoneInfo("Asia/Jakarta")
 
+# Daily/weekly/monthly report emails are switched off. Set REPORT_EMAILS_ENABLED=true to bring them back.
+REPORT_EMAILS_ENABLED = os.environ.get("REPORT_EMAILS_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+
 
 def _rupiah(value: int) -> str:
     return "Rp " + f"{int(value):,}".replace(",", ".")
@@ -97,6 +100,8 @@ def _daily_email_html(store_name: str, owner_name: str, recap: dict, work_date: 
 
 
 async def run_daily_store_reports() -> None:
+    if not REPORT_EMAILS_ENABLED:
+        return
     stores = await db.stores.find({"daily_report_enabled": {"$ne": False}}).to_list(10000)
     for store in stores:
         try:
@@ -245,6 +250,8 @@ def _recap_html(store_name: str, owner_name: str, recap: dict, period: str) -> s
 
 async def run_weekly_reports(run_id: str) -> None:
     """Send one recap per Pemilik account, scoped to that owner's own store."""
+    if not REPORT_EMAILS_ENABLED:
+        return
     now_wib = datetime.now(WIB)
     period = f"{(now_wib - timedelta(days=6)).strftime('%d %b')} – {now_wib.strftime('%d %b %Y')}"
 
@@ -282,6 +289,8 @@ async def weekly_report(
     # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
     if not _authorized_cron(authorization):
         raise HTTPException(status_code=401, detail="Unauthorized")
+    if not REPORT_EMAILS_ENABLED:
+        return {"status": "disabled"}
 
     envelope = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
     if not isinstance(envelope, dict):
@@ -306,5 +315,7 @@ async def daily_store_closing(
     """Every-minute dispatcher; each enabled store sends once when its local close time passes."""
     if not _authorized_cron(authorization):
         raise HTTPException(status_code=401, detail="Unauthorized")
+    if not REPORT_EMAILS_ENABLED:
+        return {"status": "disabled"}
     background.add_task(run_daily_store_reports)
     return {"status": "accepted"}

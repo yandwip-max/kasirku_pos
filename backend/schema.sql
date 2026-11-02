@@ -69,6 +69,12 @@ CREATE TABLE IF NOT EXISTS categories (
     document JSONB NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS suppliers (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    document JSONB NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS email_tests (
     id TEXT PRIMARY KEY,
     store_id TEXT REFERENCES stores(id) ON DELETE CASCADE,

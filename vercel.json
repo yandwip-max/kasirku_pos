@@ -24,8 +24,5 @@
     { "source": "/api", "destination": { "service": "backend" } },
     { "source": "/api/(.*)", "destination": { "service": "backend" } },
     { "source": "/(.*)", "destination": { "service": "frontend" } }
-  ],
-  "crons": [
-    { "path": "/api/cron/weekly-report", "schedule": "30 14 * * 6" }
   ]
 }
