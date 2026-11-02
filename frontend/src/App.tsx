@@ -6,10 +6,8 @@ import ProductsPage from "@/pages/ProductsPage";
 import TransactionsPage from "@/pages/TransactionsPage";
 import DailyReportPage from "@/pages/DailyReportPage";
 import ReportsPage from "@/pages/ReportsPage";
-import UsersPage from "@/pages/UsersPage";
 import ActivityLogPage from "@/pages/ActivityLogPage";
 import SettingsPage from "@/pages/SettingsPage";
-import AttendanceReportPage from "@/pages/AttendanceReportPage";
 import AssetsPage from "@/pages/AssetsPage";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -72,14 +70,8 @@ export default function App() {
           </RequirePermission>
         }
       />
-      <Route
-        path="/users"
-        element={
-          <RequirePermission action="user:manage">
-            <UsersPage />
-          </RequirePermission>
-        }
-      />
+      <Route path="/users" element={<Navigate to="/settings?tab=pengguna" replace />} />
+      <Route path="/attendance-report" element={<Navigate to="/settings?tab=absensi" replace />} />
 
       <Route
         path="/settings"
@@ -95,15 +87,6 @@ export default function App() {
         element={
           <RequirePermission action="user:manage">
             <ActivityLogPage />
-          </RequirePermission>
-        }
-      />
-
-      <Route
-        path="/attendance-report"
-        element={
-          <RequirePermission action="user:manage">
-            <AttendanceReportPage />
           </RequirePermission>
         }
       />

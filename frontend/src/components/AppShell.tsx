@@ -3,7 +3,6 @@ import { NavLink, useNavigate } from "react-router-dom";
 import {
   BarChart3,
   CalendarDays,
-  ClipboardList,
   CloudOff,
   History,
   Landmark,
@@ -16,7 +15,6 @@ import {
   Settings,
   ShoppingCart,
   Store,
-  Users,
   Wifi,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -38,8 +36,6 @@ const NAV_ITEMS = [
   { to: "/transactions", label: "Riwayat", icon: History, testid: "nav-transactions-link", action: "transaction:read" },
   { to: "/reports/daily", label: "Laporan Harian", icon: CalendarDays, testid: "nav-daily-report-link", action: "report:read" },
   { to: "/reports", label: "Ringkasan", icon: BarChart3, testid: "nav-reports-link", action: "report:read" },
-  { to: "/attendance-report", label: "Lap. Absensi", icon: ClipboardList, testid: "nav-attendance-report-link", action: "user:manage" },
-  { to: "/users", label: "Pengguna", icon: Users, testid: "nav-users-link", action: "user:manage" },
   { to: "/activity", label: "Aktivitas", icon: ScrollText, testid: "nav-activity-link", action: "user:manage" },
   { to: "/settings", label: "Pengaturan", icon: Settings, testid: "nav-settings-link", action: "user:manage" },
 ];

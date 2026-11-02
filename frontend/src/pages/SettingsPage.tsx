@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Clock3, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Clock3, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { apiGet, apiPatch } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
@@ -12,11 +12,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UsersPanel } from "@/pages/UsersPage";
+import { AttendanceReportPanel } from "@/pages/AttendanceReportPage";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/lib/auth";
 
 export default function SettingsPage() {
   const { store } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = ["pengguna", "absensi"].includes(searchParams.get("tab") ?? "") ? searchParams.get("tab")! : "toko";
   const queryClient = useQueryClient();
   const [hours, setHours] = useState<StoreSchedulePayload>({
     opening_time: store?.opening_time ?? "08:00",
@@ -54,6 +59,14 @@ export default function SettingsPage() {
           <p className="text-sm text-slate-500">Atur identitas toko dan informasi yang ditampilkan pada struk.</p>
         </header>
 
+        <Tabs value={tab} onValueChange={(value) => setSearchParams(value === "toko" ? {} : { tab: String(value) })}>
+          <TabsList>
+            <TabsTrigger value="toko" data-testid="settings-tab-toko">Toko</TabsTrigger>
+            <TabsTrigger value="pengguna" data-testid="settings-tab-users">Pengguna</TabsTrigger>
+            <TabsTrigger value="absensi" data-testid="settings-tab-attendance">Laporan Absensi</TabsTrigger>
+          </TabsList>
+
+        <TabsContent value="toko" className="space-y-6">
         <StoreProfileCard />
         <LoginVerificationCard />
         <CloneStoreCard />
@@ -119,24 +132,17 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <section className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardContent className="flex h-full flex-col gap-3 p-4">
-              <div className="flex items-center gap-2 font-semibold">
-                <ShieldCheck className="h-4 w-4 text-emerald-700" /> Akses dan pengguna
-              </div>
-              <p className="flex-1 text-sm text-slate-500">
-                Kelola akun kasir dan pemilik untuk {store?.name ?? "toko ini"}. Halaman pengaturan, stok, laporan,
-                dan pengelolaan akun hanya dapat dibuka oleh pemilik.
-              </p>
-              <Button variant="outline" render={<Link to="/users" />} className="w-fit">
-                Kelola Pengguna <ArrowRight className="h-4 w-4" />
-              </Button>
-            </CardContent>
-          </Card>
-        </section>
-
         <DeleteStoreCard />
+        </TabsContent>
+
+        <TabsContent value="pengguna" className="-m-4 lg:-m-6">
+          <UsersPanel />
+        </TabsContent>
+
+        <TabsContent value="absensi" className="-m-4 lg:-m-6">
+          <AttendanceReportPanel />
+        </TabsContent>
+        </Tabs>
       </div>
     </AppShell>
   );

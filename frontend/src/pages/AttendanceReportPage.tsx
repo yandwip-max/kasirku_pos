@@ -12,7 +12,6 @@ import { toast } from "sonner";
 import { apiGet } from "@/lib/api";
 import { downloadFile } from "@/lib/download";
 import type { AttendanceReport } from "@/lib/types";
-import AppShell from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -109,7 +108,7 @@ const MONTH_OPTIONS = buildMonthOptions();
 
 // ── Page component ────────────────────────────────────────────────────────────
 
-export default function AttendanceReportPage() {
+export function AttendanceReportPanel() {
   const [days, setDays] = useState(30);
   const [exportKey, setExportKey] = useState(`${MONTH_OPTIONS[0].year}-${MONTH_OPTIONS[0].month}`);
   const [downloading, setDownloading] = useState(false);
@@ -140,7 +139,7 @@ export default function AttendanceReportPage() {
   }
 
   return (
-    <AppShell>
+    <>
       <div className="mx-auto max-w-[1440px] space-y-4 p-4 lg:p-6">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -336,6 +335,6 @@ export default function AttendanceReportPage() {
           <strong>Tingkat Kelengkapan</strong> = Hari Lengkap ÷ Hari Masuk
         </p>
       </div>
-    </AppShell>
+    </>
   );
 }

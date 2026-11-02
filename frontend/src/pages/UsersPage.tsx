@@ -9,7 +9,6 @@ import { apiErrorMessage } from "@/lib/apiError";
 import type { CreateUserPayload, Role, UpdateUserPayload, User } from "@/lib/types";
 import { formatDateTime } from "@/lib/format";
 import { useAuth } from "@/lib/auth";
-import AppShell from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -119,7 +118,7 @@ function RenameUserDialog({
   );
 }
 
-export default function UsersPage() {
+export function UsersPanel() {
   const { user: me, store } = useAuth();
   const [open, setOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<User | null>(null);
@@ -166,7 +165,7 @@ export default function UsersPage() {
   }
 
   return (
-    <AppShell>
+    <>
       <div className="mx-auto max-w-[1440px] space-y-4 p-4 lg:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -362,6 +361,6 @@ export default function UsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AppShell>
+    </>
   );
 }
